@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "strict": true,
+    "types": ["@types/bun"],
+    "moduleResolution": "bundler",
+    "module": "esnext",
+    "target": "esnext",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "lib": ["esnext", "dom"]
+  },
+  "include": ["src", "web", "test"]
+}
