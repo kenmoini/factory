@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "../..");
@@ -49,5 +49,32 @@ describe("plugin hooks", () => {
     expect(e[0].timeout).toBe(3);
     expect("async" in e[0]).toBe(false);
     expect(e[0].command.endsWith(" session-start")).toBe(true);
+  });
+});
+
+describe("bin/", () => {
+  const binDir = join(root, "bin");
+  const files = readdirSync(binDir);
+
+  test("contains all expected scripts", () => {
+    for (const f of ["factory-config", "factory-event", "factory-preflight", "factory-worktree", "factory-review-package", "factory-merge", "factory-dashboard"]) {
+      expect(files).toContain(f);
+    }
+  });
+
+  test("every script is executable, starts with #!/bin/sh, and shims exec bun", () => {
+    for (const f of files) {
+      const p = join(binDir, f);
+      expect(statSync(p).mode & 0o111).not.toBe(0);
+      const text = readFileSync(p, "utf8");
+      expect(text.split("\n")[0]).toBe("#!/bin/sh");
+      if (f !== "factory-event") expect(text).toContain("exec bun");
+    }
+  });
+
+  test("factory-dashboard status degrades gracefully when dashboard is not built", () => {
+    const r = Bun.spawnSync([join(binDir, "factory-dashboard"), "status"]);
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout.toString())).toEqual({ running: false, reason: "dashboard not built" });
   });
 });
