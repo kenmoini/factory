@@ -25,3 +25,8 @@ test("no frontmatter returns empty data and full body", () => {
   const md = "# Just a doc\n";
   expect(parseFrontmatter(md)).toEqual({ data: {}, body: md });
 });
+test("comma in description stays a string; only list keys split", () => {
+  const { data } = parseFrontmatter('---\ndescription: "Use when X, Y"\ntools: Read, Grep\n---\n');
+  expect(data.description).toBe("Use when X, Y");
+  expect(data.tools).toEqual(["Read", "Grep"]);
+});

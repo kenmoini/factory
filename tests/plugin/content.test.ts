@@ -124,6 +124,18 @@ test.skipIf(NO_RUN_SKILL)("run: SKILL.md mentions each stages/<s>.md and each ex
 });
 
 // ---------- rule 6: label drift ----------
+/** Usage regex (not preceded by word char, backtick or #). */
+const USED_LABEL_RE = () => /(?<![\w`#])#([a-z][A-Za-z0-9]*)(?![A-Za-z0-9])/g;
+/** Labels declared in the schema: exact tokens, backticks allowed before the #. */
+export function declaredLabels(schema: string): Set<string> {
+  return new Set([...schema.matchAll(/(?<![\w#])#([a-z][A-Za-z0-9]*)(?![A-Za-z0-9])/g)].map((m) => m[1]));
+}
+test("labels: declaredLabels matches exact tokens only", () => {
+  const d = declaredLabels("`#statusReason` and #kind.");
+  expect(d.has("status")).toBe(false);
+  expect(d.has("statusReason")).toBe(true);
+  expect(d.has("kind")).toBe(true);
+});
 test("labels: every #label used in stages/refs/agents is defined in trilium-schema.md", () => {
   const files = [
     ...mdIn("skills/run/stages"),
@@ -132,7 +144,7 @@ test("labels: every #label used in stages/refs/agents is defined in trilium-sche
   ];
   const used = new Map<string, string[]>();
   for (const f of files) {
-    for (const m of read(f).matchAll(/(?<![\w`#])#([a-z][A-Za-z0-9]*)\b/g)) {
+    for (const m of read(f).matchAll(USED_LABEL_RE())) {
       if (LABEL_ALLOWLIST.includes(m[1])) continue;
       used.set(m[1], [...new Set([...(used.get(m[1]) ?? []), f])]);
     }
@@ -140,8 +152,8 @@ test("labels: every #label used in stages/refs/agents is defined in trilium-sche
   if (used.size === 0) return;
   const schemaPath = "skills/run/references/trilium-schema.md";
   expect(existsSync(abs(schemaPath)), `${schemaPath} is missing but labels are used: ${[...used.keys()].map((l) => "#" + l).join(", ")}`).toBe(true);
-  const schema = read(schemaPath);
-  const problems = [...used].filter(([l]) => !schema.includes(`#${l}`)).map(([l, fs]) => `#${l} (used in ${fs.join(", ")}) not defined in ${schemaPath}`);
+  const declared = declaredLabels(read(schemaPath));
+  const problems = [...used].filter(([l]) => !declared.has(l)).map(([l, fs]) => `#${l} (used in ${fs.join(", ")}) not defined in ${schemaPath}`);
   expect(problems, problems.join("\n")).toEqual([]);
 });
 

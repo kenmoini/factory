@@ -1,10 +1,13 @@
 export type FrontmatterValue = string | string[] | boolean;
 
-function scalar(raw: string): FrontmatterValue {
+/** Only these keys are comma-split into arrays; every other key stays a string. */
+export const LIST_KEYS = new Set(["tools", "disallowedTools", "allowed-tools", "disallowed-tools", "skills", "keywords"]);
+
+function scalar(key: string, raw: string): FrontmatterValue {
   const v = raw.trim();
   if (v === "true") return true;
   if (v === "false") return false;
-  if (v.includes(",")) return v.split(",").map((s) => s.trim()).filter(Boolean);
+  if (LIST_KEYS.has(key) && v.includes(",")) return v.split(",").map((s) => s.trim()).filter(Boolean);
   return v.replace(/^(["'])(.*)\1$/, "$2");
 }
 
@@ -27,7 +30,7 @@ export function parseFrontmatter(md: string): { data: Record<string, Frontmatter
       data[kv[1]] = [];
       listKey = kv[1];
     } else {
-      data[kv[1]] = scalar(kv[2]);
+      data[kv[1]] = scalar(kv[1], kv[2]);
       listKey = null;
     }
   }
