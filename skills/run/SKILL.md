@@ -10,25 +10,26 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent, SendMessage, AskUserQ
 You drive the factory pipeline from this session. You are the single writer of Trilium: only you call
 `mcp__trilium__*`, and you turn agent output into notes and labels. You spawn every subagent (`factory:*` via
 the Agent tool) and hold every conversation with the user through AskUserQuestion, because subagents cannot
-talk to the user. You never edit product code yourself; builders do, in worktrees. Never pause to ask whether
-to continue: stop only at a human gate, at a stop condition a stage file names, or when the user interrupts.
+talk to the user. You never edit product code yourself; builders do, in worktrees. Never ask whether to continue;
+stop only where this file or a stage file says to.
 
 ## Plugin root
 
 Plugin root ($PLUGIN_ROOT): ${CLAUDE_PLUGIN_ROOT}
 
 Stage, reference and template files write this directory as the literal `$PLUGIN_ROOT/`. It is not an
-environment variable: replace it with the path above before every Read, Glob or Bash call. The `factory-*`
+environment variable: replace it with the path above everywhere you use it, including agent briefs. The `factory-*`
 commands are on the Bash PATH; if one is not found, call `$PLUGIN_ROOT/bin/<name>`.
 
 ## Preflight
 
 Preflight: !`"${CLAUDE_PLUGIN_ROOT}/bin/factory-preflight" 2>/dev/null || echo '{"error":"preflight failed"}'`
 
-Fields: `config.{global,repo}` (global / repo `.factory/config.json` exist);
-`trilium.{ok,version,mcpEndpoint,mcpRegistered,error}` (`ok` = ETAPI answered; `mcpEndpoint` = `<url>/mcp`
-answers; `mcpRegistered` = `claude mcp get trilium` succeeds); `dashboard.{running,port}`;
-`git.{isRepo,root,branch,dirty,hasCommits}` (`root` = `<repoPath>` below; its basename = `<repoName>`, the project
+Fields: `config.global` (`~/.config/claude-factory/config.json`, or `config.json` under `FACTORY_CONFIG_DIR`,
+exists), `config.repo` (`<repoPath>/.factory/config.json` exists), `config.dir` (the global config directory);
+`trilium.{ok,url,version,mcpEndpoint,mcpRegistered,error}` (`url` = Trilium base URL from the global config;
+`ok` = ETAPI answered; `mcpEndpoint` = `<url>/mcp` answers; `mcpRegistered` = `claude mcp get trilium` succeeds);
+`dashboard.{running,port}`; `git.{isRepo,root,branch,dirty,hasCommits}` (`root` = `<repoPath>` below; its basename = `<repoName>`, the project
 note title and `#project` value; never use one for the other);
 `factory.{configured,projectNoteId,activeWorkstream,worktree}`; `graphify.{installed,outPresent,ageMinutes,gitHooks}`;
 `tools.{bun,uv,node,superpowers}`. A bare `{"error":…}` means the probe could not run. It is a snapshot taken at
@@ -140,21 +141,26 @@ Then run `factory-dashboard open`.
 
 These resolve a `needs-human` task. They skip the prerequisite table: a realign that bumped `#planRev` must not
 block resolving a parked task. With sop.md and the schema read, Read `$PLUGIN_ROOT/skills/run/stages/execute.md`,
-resolve `<slug>` and `<ws>` as in its Preconditions step 0 (no other precondition), then run only its
-**Human approve** section (`approve <T>`) or **Human reject** section (`reject <T> "notes"`). It hands over to
-the execute loop (MERGE, SPEC or FIX); follow it until the loop stops, then stop: never continue to the next
-stage. Only the user issues these verbs; never approve or reject a task on your own.
+resolve `<slug>`/`<ws>` as execute-loop.md § Preconditions step 0 (execute.md § Prerequisites points there; no
+other precondition), then run only its **Human approve** section (`approve <T>`) or **Human reject** section
+(`reject <T> "notes"`). It hands over to the execute loop (MERGE, SPEC or FIX); follow it until the loop stops,
+then stop: never continue to the next stage. Only the user issues these verbs; never approve or reject a task on
+your own.
 
 ## Working files
 
 `<repoPath>/.factory/` (gitignored, like `graphify-out/`):
 - `config.json`: `projectNoteId`, `activeWorkstream`, `workstreams.<slug>.noteId` (`factory-config get|set … --repo <repoPath>`).
 - `state.json`: execute ledger; Trilium wins when they disagree.
-- `workstreams/<slug>/docs/*.md`: Markdown exports of Trilium documents for agents.
+- `docs/`: exports of the project documents (`goal`, `standards`, `examination`, `enforcement-plan`).
+- `workstreams/<slug>/`: `docs/*.md` exports for agents (workstream documents plus copies of the project ones),
+  `tasks.md`, drafts.
 - `tasks/<slug>/<taskId>/`: brief, spec, report, review packages and results of one task.
 - `mockups/<slug>/`: UI/UX option mockups served by the dashboard.
 - `worktrees/<slug>/`: the workstream's git worktree on branch `<slug>` (`factory-worktree ensure|remove`).
-- `examine/`, `research/`: codebase-examiner and standards-researcher output.
+- `examine/`: examine drafts and codebase-examiner output.
+- `research/`: standards-researcher questions, answers and report; the Standards draft.
+- `enforce/`: Enforcement Plan file drafts, lint/test logs and `applied.txt`.
 
 ## Stage files
 

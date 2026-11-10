@@ -15,7 +15,8 @@ agent dispatch rules in `$PLUGIN_ROOT/skills/run/references/agent-protocol.md`.
 ### 2. Every stage ends the same way
 
 1. Write or overwrite the stage's document note (template from `$PLUGIN_ROOT/skills/run/templates/`) and
-   re-export it to `.factory/workstreams/<slug>/docs/` when agents will need it.
+   re-export it when agents will need it: project docs to `.factory/docs/`, workstream docs to
+   `.factory/workstreams/<slug>/docs/` (schema, Exports for agents).
 2. `mcp__trilium__set_attribute` of the stage label on the project or workstream note (e.g. `#stageExamine=done`).
 3. `mcp__trilium__append_to_note` on `Factory Log`: `- <ISO ts> [<stage>] stage done — <one-line outcome>`.
 4. `factory-event stage --stage <stage> --status done --workstream <slug> </dev/null` (omit `--workstream`
@@ -30,10 +31,12 @@ agent dispatch rules in `$PLUGIN_ROOT/skills/run/references/agent-protocol.md`.
 
 ### 4. Commits and branches
 
-- You commit on `main` only for approved scaffolding (`chore: enforce standards`, after `#approval=approved`).
+- Your only commits on `main` are the two scaffolding commits: `chore: ignore factory working files` (setup's
+  `.gitignore`) and `chore: enforce standards` (after `#approval=approved`).
 - Builders commit only on branch `<slug>` inside `<repoPath>/.factory/worktrees/<slug>`; the api-design stage commits
   its repo API docs there too (`docs(api): <slug>`). Nobody else commits on `main`.
-- `main` changes only through `factory-merge <repoPath> <slug> "<message>"` (`git merge --no-ff`); never push, never open a PR.
+- `main` changes only through `factory-merge <repoPath> <slug> "<message>"` (`git merge --no-ff`), except those two
+  scaffolding commits; never push, never open a PR.
 - Never rebase, reset or force anything on `main`; refuse and report if `main` is dirty.
 
 ### 5. Graph first
@@ -46,7 +49,8 @@ agent dispatch rules in `$PLUGIN_ROOT/skills/run/references/agent-protocol.md`.
 
 ### 6. Human gates use AskUserQuestion
 
-- Gates: Enforcement Plan, workstream Spec, Plan, validation outcome, every `needs-human` task.
+- Gates: Goal, Standards, Enforcement Plan, workstream Spec, Plan, UI-UX Spec, API Design, validation outcome,
+  every `needs-human` task.
 - Use AskUserQuestion with explicit options (e.g. `Approve / Edit / Skip stage`); never infer approval from silence.
 - Record the answer in labels (`#approval`, `#verdict`) and one Factory Log line before acting on it.
 - Subagents cannot talk to the user: all dialogue happens here, in the orchestrator.
@@ -61,8 +65,8 @@ agent dispatch rules in `$PLUGIN_ROOT/skills/run/references/agent-protocol.md`.
 
 ### 8. The orchestrator never edits product code
 
-- You never Write/Edit files in the product source tree or the worktree; builders do.
-- Allowed writes: `.factory/**` (exports, briefs, ledger, mockups), `.gitignore` entries, approved scaffolding in
+- You never Write/Edit files in the product source tree or the worktree (builders do), except these allowed writes:
+  `.factory/**` (exports, drafts, briefs, ledger, mockups), `.gitignore` entries (setup), approved scaffolding in
   enforce-standards, repo API docs in api-design (in the workstream worktree, path from `#apiDocPath`).
 - Need a code change outside a task? Ask the user to add it to the plan (plan stage) rather than doing it.
 
@@ -71,7 +75,7 @@ agent dispatch rules in `$PLUGIN_ROOT/skills/run/references/agent-protocol.md`.
 - After a compaction, a resume or a long pause, re-read before acting: `.factory/state.json` (execute ledger),
   then `mcp__trilium__get_attributes` of the task note it names (and the workstream note).
 - **Trilium wins**: when the ledger and labels disagree, rewrite the ledger from the labels (status → phase
-  table in `execute-loop.md`) and log `- <ISO ts> [execute] ledger resynced from Trilium`.
+  table in `execute-loop.md`; ledger-only fields are kept) and log `- <ISO ts> [execute] ledger resynced from Trilium`.
 - Re-read this file, the current stage file and any reference you are about to apply; do not act from memory.
 - Never re-dispatch an agent whose run note is `#status=running` without first checking whether its result
   already arrived in this session; if unknown, mark that run `failed` and dispatch fresh.

@@ -30,19 +30,28 @@ Single source of truth for every Trilium note, title, label and search the facto
   workstream also carries `#workstream=<slug>`; every note below a task (and the task) carries
   `#taskId=<T-NNN>`. Searches never depend on ancestors.
 - **Find or create**: before creating a child, `mcp__trilium__get_child_notes(<parent>)` and match the exact
-  title; reuse the note if present (overwrite content, re-set labels), except `Human Decision`, which is
-  append-only once created (`append_to_note`, never `set_note_content`). Containers (`Agent Runs`,
-  `Workstreams`, `Milestones`, `Validation`) are plain text notes found the same way; they carry only
-  `#project` (and `#workstream` for `Milestones`, `Validation`).
+  title; reuse the note if present (overwrite content, re-set labels). Exempt from the overwrite (content kept,
+  labels re-set): `ClaudeProjects`, the project note, and the append-only `Factory Log` and `Human Decision`
+  (`append_to_note`, never `set_note_content`). Containers (`Agent Runs`, `Workstreams`, `Milestones`,
+  `Validation`) are plain text notes found the same way; they carry only `#project` (and `#workstream` for
+  `Milestones`, `Validation`).
 - **Templates**: document bodies come from `$PLUGIN_ROOT/skills/run/templates/<name>.md`: Read, fill every
   `{{placeholder}}` (write `n/a` when not applicable), keep lines 1–2, create the note. Line 2
   (`<!-- factoryDoc: <kind> -->`) is a template marker, not a label instruction: the note's labels come from this
   schema. For most templates the kind equals the note's `#factoryDoc` value; the exceptions are marker-labelled
   notes that never carry `#factoryDoc`: `review` (Review notes carry `#factoryReview`), `validation` (Round
   notes carry `#factoryValidation`), and `task-spec` when used for the task note body (`#factoryTask`).
-- **Exports for agents**: the orchestrator copies note content to files that agents read:
-  `.factory/workstreams/<slug>/docs/<kind>.md` (`goal`, `examination`, `standards`, `overview`, `spec`,
-  `plan`, `uiux`, `api-design`) via `mcp__trilium__get_note_content` + Write. Re-export after every change.
+- **Exports for agents**: the orchestrator copies note content to files that agents read
+  (`mcp__trilium__get_note_content` + Write; re-export after every change). `<wsd>` =
+  `<repoPath>/.factory/workstreams/<slug>`.
+  - Project docs: `<repoPath>/.factory/docs/{goal,standards,examination,enforcement-plan}.md`; each export also
+    refreshes the existing copies in `<wsd>/docs/`; brainstorm copies `goal`, `standards`, `examination` into
+    `<wsd>/docs/`.
+  - Workstream docs: `<wsd>/docs/{overview,spec,plan,uiux,api-design}.md`; the task list `<wsd>/tasks.md`.
+  - Drafts, agent output and other working files: `<repoPath>/.factory/examine/`, `<repoPath>/.factory/research/`
+    (incl. `answers.md`, `report.md`), `<repoPath>/.factory/enforce/` (incl. `applied.txt`), `<wsd>/docs/*-draft.md`,
+    `<wsd>/api-draft/`, `<wsd>/validation/`, `<wsd>/stray-baseline`, `<wsd>/stray-head`, `<wsd>/stray/`.
+  - Task files: `<repoPath>/.factory/tasks/<slug>/<taskId>/`.
 - **Ids cached** in `.factory/config.json`: `projectNoteId`, `workstreams.<slug>.noteId` (via `factory-config
   set <key> <value> --repo <repoPath>`). Everything else is found by title under a cached id or by search.
 - **Timestamps** are UTC ISO-8601 `YYYY-MM-DDTHH:MM:SSZ` (`date -u +%Y-%m-%dT%H:%M:%SZ`); shas are full 40-hex;
@@ -63,9 +72,10 @@ root
       ├─ Goal                          #factoryDoc=goal #approval=approved
       ├─ Codebase Examination          #factoryDoc=examination  (brownfield only)
       ├─ Standards                     #factoryDoc=standards #lintCmd #testCmd #buildCmd #ciPlatform #approval
+      │                                #apiDocPath
       ├─ Enforcement Plan              #factoryDoc=enforcement-plan #approval=pending|approved|rejected #appliedSha
       ├─ Agent Runs                    container for runs without a task
-      │  └─ <ISO ts> <agentType> <agentId>   #factoryAgentRun …
+      │  └─ <ISO ts> <agentType> [<lens>] <agentId>   #factoryAgentRun …
       └─ Workstreams                   container
          └─ <slug>                     #factoryWorkstream #slug #branch #worktree #wsStatus
             │                          #stageBrainstorm #stageUiux #stageApi #stagePlan #stageValidate
@@ -73,8 +83,8 @@ root
             ├─ Overview                #factoryDoc=overview #approval=approved
             ├─ Spec                    #factoryDoc=spec #approval=approved
             ├─ Plan                    #factoryDoc=plan #approval=approved #planRev
-            ├─ UI-UX Spec              #factoryDoc=uiux
-            ├─ API Design              #factoryDoc=api-design #apiDocPath
+            ├─ UI-UX Spec              #factoryDoc=uiux #approval=approved
+            ├─ API Design              #factoryDoc=api-design #approval=approved #apiDocPath
             ├─ Validation              container
             │  └─ Round <N>            #factoryValidation #round #verdict=pass|fail #planRev
             │     └─ <lens>            #lens #round #verdict=PASS|FAIL  (one child per plan-adversary)
@@ -87,7 +97,7 @@ root
                      ├─ Review R<n> <reviewer>   #factoryReview #round #reviewer #verdict=PASS|CHANGES
                      ├─ Approval R<n>  #factoryDoc=approval #round #verdict=APPROVE|ESCALATE
                      ├─ Human Decision #factoryDoc=human-decision #verdict=approve|reject #round  (append-only)
-                     └─ <ISO ts> <agentType> <agentId>   #factoryAgentRun (builder/reviewer/approver/spec-writer runs)
+                     └─ <ISO ts> <agentType> [<reviewer>] <agentId>   #factoryAgentRun (builder/reviewer/approver/spec-writer runs)
 ```
 
 The task note's own body and the child `Task Spec` both use template `task-spec`. For the task note body the
@@ -112,7 +122,7 @@ placeholders untouched (the one exception to "fill every placeholder"); the task
 | `#activeWorkstream` | project | slug (mirrors `.factory/config.json`) |
 | `#dashboardPort` | project | port number (default `7777`) |
 | `#factoryDoc` | every document note | `log` \| `goal` \| `examination` \| `standards` \| `enforcement-plan` \| `overview` \| `spec` \| `plan` \| `uiux` \| `api-design` \| `task-spec` \| `build-report` \| `approval` \| `human-decision` |
-| `#approval` | Goal, Standards, Enforcement Plan, Overview, Spec, Plan | `pending` \| `approved` \| `rejected` |
+| `#approval` | Goal, Standards, Enforcement Plan, Overview, Spec, Plan, UI-UX Spec, API Design | `pending` \| `approved` \| `rejected` |
 | `#lintCmd` | Standards | shell command run from the repo/worktree root; empty = none |
 | `#testCmd` | Standards | shell command; empty = none |
 | `#buildCmd` | Standards | shell command; empty = none |
@@ -140,7 +150,7 @@ placeholders untouched (the one exception to "fill every placeholder"); the task
 | `#planRev` | workstream (authoritative); Plan (mirror); Validation round (rev validated) | integer, starts `1`, +1 per realign |
 | `#validatedPlanRev` | workstream | `#planRev` value of the last passing validation |
 | `#stageExecute` | workstream | `done` |
-| `#apiDocPath` | API Design | repo-relative path of the API doc (e.g. `docs/openapi.yaml`) |
+| `#apiDocPath` | Standards (shared by every workstream); API Design | repo-relative path of the API doc (e.g. `docs/openapi.yaml`); empty on API Design = no repo document |
 | `#factoryValidation` | Validation `Round <N>` | marker |
 | `#lens` | lens child of a round | `feasibility` \| `missing-requirements` \| `security` \| `ux` \| `sequencing` \| `standards` |
 | `#round` | task; Review; Approval; Validation round; lens child; Human Decision | integer; task starts `0`, review rounds start `1`, never reset; on Human Decision: the task's `#round` at the latest decision |
@@ -184,11 +194,13 @@ placeholders untouched (the one exception to "fill every placeholder"); the task
 One note per dispatch (a `SendMessage` resumption counts as a new run of the same agent id).
 
 1. **Before the Agent call**: `create_note` under the task note (or project `Agent Runs` when no task) with
-   title `<ISO ts> <agentType> pending`, content `Dispatched <ISO ts>. Brief: <path or first line>`, then labels
-   `#factoryAgentRun`, `#agentType=<agentType>`, `#status=running`, `#startedAt=<ISO ts>`, `#project`,
-   and when applicable `#workstream`, `#taskId`.
-2. **After the result**: `rename_note` to `<ISO ts> <agentType> <agentId>` (same ts as created); set
-   `#agentId=<agentId>`, `#status=done` (parsed contract) or `failed` (error / unparseable), `#endedAt=<ISO ts>`;
+   title `<ISO ts> <agentType> [<lens|reviewer>] pending`. The bracketed segment (written without brackets) is
+   present for parallel dispatches only: the reviewer (`security`, `ux`, `ui-design`, `code`) for the four
+   reviewers, the lens for the six plan-adversaries. Titles must be unique while pending. Content
+   `Dispatched <ISO ts>. Brief: <path or first line>`, then labels `#factoryAgentRun`, `#agentType=<agentType>`,
+   `#status=running`, `#startedAt=<ISO ts>`, `#project`, and when applicable `#workstream`, `#taskId`.
+2. **After the result**: `rename_note` to `<ISO ts> <agentType> [<lens|reviewer>] <agentId>` (same ts and segment
+   as created); set `#agentId=<agentId>`, `#status=done` (parsed contract) or `failed` (error / unparseable), `#endedAt=<ISO ts>`;
    `append_to_note` the agent's ≤ 15 summary lines and its fenced json block. On a task also set the task's
    `#agentId=<agentId>`.
 
@@ -212,7 +224,7 @@ numerically.
 | root | `#factoryRoot` |
 | project | `#factoryProject #repoPath='<repoPath>'` |
 | workstream (cache miss) | `#factoryWorkstream #slug='<slug>'` |
-| next task (candidates) | `#factoryTask #workstream='<slug>' #status=todo orderBy #order asc` — take the first whose `#dependsOn` are all done; `limit 1` only when no deps exist |
+| next task (candidates) | `#factoryTask #workstream='<slug>' #status=todo orderBy #order asc` — fetch candidates ordered by `#order`; the orchestrator picks the first whose `#dependsOn` are all `done` |
 | done task ids | `#factoryTask #workstream='<slug>' #status=done` |
 | in-flight task | `#factoryTask #workstream='<slug>' #status!=todo #status!=done limit 1` |
 | blockers | `#factoryTask #workstream='<slug>' (#status='needs-human' OR #status=blocked)` |
@@ -221,4 +233,4 @@ numerically.
 | reviews of a round | `#factoryReview #workstream='<slug>' #taskId='T-001' #round=2` |
 | latest validation | `#factoryValidation #workstream='<slug>' orderBy #round desc limit 1` |
 | agent run by id | `#factoryAgentRun #agentId='<agentId>'` |
-| document by kind | `#factoryDoc=<kind> #workstream='<slug>'` (workstream docs) or `#factoryDoc=<kind>` (project docs) |
+| document by kind | `#factoryDoc='<kind>' #workstream='<slug>'` (workstream docs) or `#factoryDoc='<kind>'` (project docs) |

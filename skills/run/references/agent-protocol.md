@@ -38,7 +38,7 @@ Return: ≤15 lines then exactly one fenced json block matching your contract
 |---|---|---|---|
 | `spec-writer` | `<taskDir>/brief.md` | `docs=<docs>/`, `standards=<docs>/standards.md`, `template=$PLUGIN_ROOT/skills/run/templates/task-spec.md` | `<taskDir>/spec.md` |
 | `builder` | `<taskDir>/spec.md` | `worktree=<wt>`, `branch=<slug>`, `report=<taskDir>/report.md`, `` lint=`<lintCmd>` ``, `` test=`<testCmd>` ``, `` build=`<buildCmd>` ``, `findings=<taskDir>/findings-R<n>.md` (fix only) | `<wt>/**`, `<taskDir>/report.md` |
-| `security-reviewer` | `<taskDir>/review-R<n>.diff` | `spec=<taskDir>/spec.md`, `report=<taskDir>/report.md`, `worktree=<wt>`, `round=<n>`, `open=<taskDir>/open-findings-R<n-1>.json` (round > 1) | none |
+| `security-reviewer` | `<taskDir>/review-R<n>.diff` | `spec=<taskDir>/spec.md`, `report=<taskDir>/report.md`, `worktree=<wt>`, `round=<n>`, `open=` (only when one exists): `<taskDir>/open-findings-R<n-1>.json`, the `-human` variant `open-findings-R<n-1>-human.json` after a reject (possible at round 1), or `<taskDir>/conflict-<k>-findings.json` in conflict mode (code-reviewer only) | none |
 | `ux-reviewer` | same | same + `uiux=<docs>/uiux.md` | none |
 | `ui-design-reviewer` | same | same + `uiux=<docs>/uiux.md`, `mockups=<repoPath>/.factory/mockups/<slug>/` | none |
 | `code-reviewer` | same | same + `standards=<docs>/standards.md`, `plan=<docs>/plan.md` | none |
@@ -138,8 +138,7 @@ human must decide.
 4. BLOCKED handling: spec-writer and builder → `execute-loop.md`; a reviewer → respawn that reviewer once, then
    NEEDS-HUMAN(`reviewer-failed`); approver → respawn once, then NEEDS-HUMAN(`approver`); codebase-examiner,
    standards-researcher, plan-adversary → respawn once, then report to the user and stop the stage.
-5. Write the parsed JSON to a file when later steps need it (`<taskDir>/review-R<n>-<reviewer>.json`, etc.) and
-   append the ≤ 15 lines + json block to the Agent Run note.
+5. Append the ≤ 15 lines + json block to the Agent Run note.
 
 ## Guardrails (every agent)
 
