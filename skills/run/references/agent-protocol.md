@@ -156,7 +156,7 @@ human must decide.
 - Dependencies: only the builder may add or install dependencies, and only those the task spec or Standards name,
   with the project's package manager inside the worktree; no global installs. Network: the builder only for that
   package-manager install, the standards-researcher only through WebSearch/WebFetch, everyone else none.
-- Secrets: never read or print `~/.config/claude-factory/config.json`, `.env*` values or tokens; redact them in reports.
+- Secrets: never read or print `~/.config/claude-factory/config.json`, `.mcp.json`, `.env*` values or tokens; redact them in reports.
 - No subagents. Do not claim tests or lint pass without running them; prefer `DONE_WITH_CONCERNS` to hiding a problem.
 - Final message: ≤ 15 lines, then exactly one fenced json block, and nothing after it.
 

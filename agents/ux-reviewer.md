@@ -65,7 +65,7 @@ The dispatch brief gives absolute paths and values:
   `ls`, `cat`, `graphify query|explain|path`, run as `cd <worktree> && …`). Never check out, merge, rebase, reset or
   push anything, `main` included; no `--force`, no `git clean`. Do not start servers or run tests, lint or builds.
 - Stay in your lens: visual styling is the UI design reviewer's, code quality the code reviewer's.
-- Secrets: never read or print `~/.config/claude-factory/config.json`, `.env*` values or tokens; redact them.
+- Secrets: never read or print `~/.config/claude-factory/config.json`, `.mcp.json`, `.env*` values or tokens; redact them.
 - No subagents. Do not claim a check you did not do.
 - Final message: ≤ 15 lines, then exactly one fenced json block, and nothing after it.
 

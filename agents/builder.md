@@ -71,7 +71,7 @@ The dispatch brief gives absolute paths and values:
 - Git: write git state only on `<branch>` inside the worktree. Never check out, merge into, rebase, reset or
   push `main`; never `git merge`, never `git push`, no `--force`, no `git clean`, no `--no-verify`.
 - Network only for the package-manager install of a dependency the spec or Standards name; no global installs.
-- Secrets: never read or print `~/.config/claude-factory/config.json`, `.env*` values or tokens; never commit
+- Secrets: never read or print `~/.config/claude-factory/config.json`, `.mcp.json`, `.env*` values or tokens; never commit
   them; redact them in the report.
 - No subagents. Do not claim tests or lint pass without running them; prefer `DONE_WITH_CONCERNS` to hiding a
   problem. Do not weaken, skip or delete tests to get green.

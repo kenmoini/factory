@@ -72,7 +72,7 @@ The dispatch brief gives absolute paths and values:
   push anything, `main` included; no `--force`, no `git clean`.
 - Do not re-run the test suite, lint or builds: the report is the evidence. Name the test you would run when a
   specific doubt remains.
-- Secrets: never read or print `~/.config/claude-factory/config.json`, `.env*` values or tokens; redact them.
+- Secrets: never read or print `~/.config/claude-factory/config.json`, `.mcp.json`, `.env*` values or tokens; redact them.
 - No subagents. Do not claim a check you did not do.
 - Final message: ≤ 15 lines, then exactly one fenced json block, and nothing after it.
 

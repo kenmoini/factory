@@ -7,10 +7,17 @@ the fresh JSON). A satisfied step prints one line (`setup: <step> ok — <detail
 register or change anything without that confirmation (one question may cover several items). Track every change
 for the summary.
 
-- **Secret.** The ETAPI token comes only from AskUserQuestion (Other) and is stored only with
-  `factory-config set etapiToken '<token>'` (mode 600; prints the file path, not the value). Never echo, print or
-  summarise it; never put it in Trilium, the Factory Log, `.factory/` or the repo. In commands write
-  `"$(factory-config get etapiToken)"`; never run `factory-config get etapiToken` bare.
+- **Secret.** The ETAPI token never passes through you. It lives only in `<repoPath>/.mcp.json` (gitignored), where
+  the user types it over the placeholder `your-etapi-token` themselves. Never ask for it, never Read, `cat` or print
+  `.mcp.json`, `~/.claude.json` or `~/.config/claude-factory/config.json`, never write a token into a command,
+  Trilium, the Factory Log, `.factory/` or a commit. Preflight reports only `trilium.{configured,placeholder,source}`;
+  the commands below print a status word or a path, never file content.
+- **`<edit>`** = print: "Open `<repoPath>/.mcp.json` and replace `your-etapi-token` with your ETAPI token (Options →
+  ETAPI in Trilium), then run `/mcp` → reconnect (or restart Claude Code) and re-run `/factory:run`." (`trilium.source`
+  `user`: name the `trilium` entry in `~/.claude.json` instead of `.mcp.json`.)
+- **Tracked `.mcp.json`.** Before writing it: `git -C "<repoPath>" ls-files --error-unmatch .mcp.json >/dev/null 2>&1`
+  exits 0 → it is committed, so a token in it would be too. Say so; AskUserQuestion `Untrack it (git rm --cached
+  .mcp.json; the file stays) / Stop setup`. Fix: `git -C "<repoPath>" rm -q --cached .mcp.json`.
 - **PATH.** Bash calls do not share environment: once uv or bun is installed in this run, start every later Bash
   call with `export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"; `.
 - **Stop setup** (a `Stop setup` answer, or a re-check that still fails): print what is missing and the user's next
@@ -32,42 +39,44 @@ nothing is read from Trilium before step 9.
    - Fix: `if command -v brew >/dev/null; then brew install oven-sh/bun/bun; else curl -fsSL https://bun.sh/install | bash; fi`
      (upgrade: `brew upgrade bun` if brew-installed, else `bun upgrade`); PATH rule.
    - Re-check: `bun --version`; `factory-preflight` prints the full JSON.
-2. **Global config** (`config.global`, `trilium.error`).
-   - Check: `config.global=true`, `trilium.error` ≠ `no config`, `factory-config get etapiToken >/dev/null` exits 0.
-   - No URL → AskUserQuestion "Trilium URL (TriliumNext ≥ 0.106)?" options `http://localhost:8080` /
-     `http://localhost:37840` (desktop); others via Other. Fix: `factory-config set triliumUrl '<url>'` (strip a
-     trailing `/` or `/etapi`).
-   - No token → AskUserQuestion "Paste an ETAPI token via Other (Trilium → Options → ETAPI → Create new ETAPI
-     token)" options `How do I create one?` (explain, ask again) / `Stop setup`. Fix: Secret rule.
+2. **Global config and legacy credentials** (`config.global`, `config.legacyTriliumKeys`). The global config holds
+   only `dashboardPort`.
    - `factory-config get dashboardPort >/dev/null 2>&1` fails → `factory-config set dashboardPort 7777`.
-   - Setting `triliumUrl` or `etapiToken` in this run marks the registration stale (step 4). Re-check: preflight.
-3. **Trilium version and MCP endpoint** (`trilium.ok`, `.version`, `.mcpEndpoint`, `.error`).
-   - Check (preflight's probe):
-     `curl -s -m 5 -H "Authorization: $(factory-config get etapiToken)" "$(factory-config get triliumUrl)/etapi/app-info"`
-     → `appVersion` ≥ 0.106 (major > 0, or major 0 and minor ≥ 106); and `trilium.mcpEndpoint=true`.
-   - `trilium.error` `HTTP 401`/`HTTP 403` (token refused) → ask for a new token as in step 2; re-check.
-   - Other error (timeout, refused, DNS, 5xx) → show it; AskUserQuestion `Retry / Stop setup` (a new URL via
-     Other, stored as in step 2); re-check.
-   - Version < 0.106 → "Trilium <version> has no built-in MCP server: upgrade TriliumNext to ≥ 0.106, then re-run
-     /factory:run"; Stop setup.
+   - `config.legacyTriliumKeys=true` → tell the user the global config still holds the old Trilium URL and token;
+     AskUserQuestion `Migrate them into <repoPath>/.mcp.json (recommended) / Leave`. Migrate → Tracked rule, then
+     `factory-config migrate-trilium --repo "<repoPath>"`: it moves both in-process (never printed), gitignores
+     `.mcp.json` and prints `{"migrated":true,"mcpJson":"<path>"}` (`"kept":true`: an entry with a real token was
+     already there and is kept); `"error"` → show it, Stop setup. Leave → continue (setup and preflight no longer use them).
+   - Re-check: preflight.
+3. **Trilium MCP server entry** (`trilium.configured`, `.placeholder`, `.source`).
+   - `configured=false` → AskUserQuestion "Trilium base URL (TriliumNext ≥ 0.106)? It goes into
+     `<repoPath>/.mcp.json` as the `trilium` MCP server with a placeholder token you replace yourself; `.mcp.json` is
+     gitignored." options `http://localhost:8080` / `http://localhost:37840` (desktop) / `Stop setup`; others via Other.
+   - Fix: Tracked rule; then (prints `written`, `invalid` or `exists`; `<url>` single-quoted)
+     `bun -e 'const fs=require("fs"),[,p,u]=process.argv;let j={};try{if(fs.existsSync(p))j=JSON.parse(fs.readFileSync(p,"utf8"))}catch{j=0}const s=j&&typeof j=="object"&&!Array.isArray(j)?(j.mcpServers??={}):0;if(!s||typeof s!="object"||Array.isArray(s)){console.log("invalid");process.exit(1)}if(s.trilium){console.log("exists");process.exit(1)}s.trilium={type:"http",url:u.trim().replace(/\/+$/,"").replace(/\/(etapi|mcp)$/,"")+"/mcp",headers:{Authorization:"Bearer your-etapi-token"}};fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n",{mode:0o600});fs.chmodSync(p,0o600);console.log("written")' "<repoPath>/.mcp.json" '<url>'`.
+     `invalid` → "`.mcp.json` is not valid JSON: fix or delete it"; `exists` → "its `trilium` server is not one the
+     factory can use (needs `"type": "http"` and a `url`): fix or remove it"; either → Stop setup.
+     Then `.gitignore`: `f="<repoPath>/.gitignore"; touch "$f"; grep -qxF .mcp.json "$f" || { [ -n "$(tail -c1 "$f")" ] && echo >> "$f"; echo .mcp.json >> "$f"; }`.
+     Then step 4's TLS bullet now (one restart covers both); then `<edit>`; Stop setup.
+   - `placeholder=true` → `<edit>`; Stop setup.
+4. **Trilium connection** (`trilium.ok`, `.error`, `.url`, `.version`, `.mcpEndpoint`). Decide on preflight only: no
+   `curl` or other command with the token.
+   - `ok=false` → print `trilium.url` and `trilium.error` (`HTTP 401`/`HTTP 403`: the token was refused, `<edit>` with
+     a valid one) and the hint "set `FACTORY_TLS_VERIFY=1` only if you want verification; the plugin skips it by
+     default"; Stop setup.
+   - `trilium.version` < 0.106 (major 0 and minor < 106) → "Trilium <version> has no built-in MCP server: upgrade
+     TriliumNext to ≥ 0.106, then re-run /factory:run"; Stop setup.
    - `trilium.mcpEndpoint=false` → "Enable it in Trilium: Options → AI/LLM → MCP server"; AskUserQuestion
      `Retry (enabled) / Stop setup`; re-check.
-4. **Register the Trilium MCP server.** Decide on this step's own `claude mcp get trilium`, never on
-   `trilium.mcpRegistered` (its 3 s probe can time out and read as unregistered).
-   - Check: `claude mcp get trilium 2>&1 | grep -iE '^ *(scope|url|status):'` (prints only those lines, never the
-     header). OK = exit 0, URL `<triliumUrl>/mcp`, the `Status:` line contains `Connected`, and not stale (step 2):
-     remember "connected" (step 8) and move on.
-   - Else (not registered, other URL, stale, or `Status:` without `Connected`, e.g. a rotated token) → tell the user
-     `trilium` → `<triliumUrl>/mcp` (token as Bearer header) goes into your user-scope MCP config (plus, when its
-     `Scope:` is Project, that the entry is removed from `<repoPath>/.mcp.json`); AskUserQuestion `Register / Stop setup`.
-   - Fix: `[ -n "$(factory-config get etapiToken 2>/dev/null)" ]` fails → Stop setup ("no ETAPI token configured").
-     While `claude mcp get trilium >/dev/null 2>&1` exits 0 (at most 3 rounds): read its `Scope:` line (`User…`,
-     `Local…`, `Project…`) and run `claude mcp remove trilium -s <user|local|project>` for that scope, so no other
-     scope shadows the new entry. Then
-     `claude mcp add --scope user --transport http trilium "<triliumUrl>/mcp" --header "Authorization: Bearer <etapiToken>" >/dev/null 2>&1`,
-     writing `<triliumUrl>` as `$(factory-config get triliumUrl)` and `<etapiToken>` as `$(factory-config get etapiToken)`;
-     decide on its exit code (non-zero → Stop setup).
-   - Re-check: the Check command shows `Scope:` User and URL `<triliumUrl>/mcp`. Remember "registered in this run".
+   - TLS for Claude Code's own MCP client (only when the URL starts with `https://`). Check: `grep -qE
+     '"NODE_TLS_REJECT_UNAUTHORIZED": *"0"' "<repoPath>/.claude/settings.local.json" 2>/dev/null`. Unset → explain
+     that the plugin skips certificate checks but Claude Code's MCP client does not, so a self-signed or private-CA
+     certificate keeps `trilium` from connecting, and that the setting turns verification off for Claude Code and the
+     processes it starts in this project; AskUserQuestion `Write NODE_TLS_REJECT_UNAUTHORIZED=0 into
+     <repoPath>/.claude/settings.local.json env (recommended for self-signed certs) / Skip`. Fix (keeps other keys;
+     prints `written` or `invalid`):
+     `bun -e 'const fs=require("fs"),[,p]=process.argv;let j={};try{if(fs.existsSync(p))j=JSON.parse(fs.readFileSync(p,"utf8"))}catch{j=0}if(!j||typeof j!="object"||Array.isArray(j)){console.log("invalid");process.exit(1)}j.env={...(j.env&&typeof j.env=="object"?j.env:{}),NODE_TLS_REJECT_UNAUTHORIZED:"0"};fs.mkdirSync(require("path").dirname(p),{recursive:true});fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n");console.log("written")' "<repoPath>/.claude/settings.local.json"`
+     (`invalid` → show it, continue without). It takes effect after Claude Code restarts: remember "TLS env written".
 5. **Tools** (`tools.uv`, `graphify.installed`, `tools.superpowers`, `graphify` in your skills list).
    - Missing items, in install order: uv (`tools.uv=false`): `curl -LsSf https://astral.sh/uv/install.sh | sh` (to
      `~/.local/bin`; PATH rule); Graphify (`graphify.installed=false`): `uv tool install graphifyy` (never `uvx` or
@@ -83,7 +92,7 @@ nothing is read from Trilium before step 9.
      `Initialise git here (git init -b main) / Stop setup`. Fix: `git init -b main`. Re-check: `git.isRepo=true`.
 7. **Working files and graph hooks** (`<repoPath>`).
    - Checks: dirs `<repoPath>/.factory/{worktrees,mockups,tasks,workstreams}`; `<repoPath>/.gitignore` lines
-     `.factory/` and `graphify-out/` (`grep -qxF`); hooks: `<hooksDir>` = output of
+     `.factory/`, `graphify-out/` and `.mcp.json` (`grep -qxF`); hooks: `<hooksDir>` = output of
      `git -C "<repoPath>" rev-parse --path-format=absolute --git-path hooks` (right for linked worktrees, submodules
      and `core.hooksPath`), present = `grep -q graphify "<hooksDir>/post-commit"` (not `graphify.gitHooks`); the repo
      has a commit (`git -C "<repoPath>" rev-parse -q --verify HEAD` succeeds; preflight `git.hasCommits`).
@@ -92,7 +101,7 @@ nothing is read from Trilium before step 9.
      commits); AskUserQuestion `Apply / Stop setup`.
    - Dirs: `mkdir -p "<repoPath>/.factory/worktrees" "<repoPath>/.factory/mockups" "<repoPath>/.factory/tasks" "<repoPath>/.factory/workstreams"`.
    - `.gitignore`: note whether `git -C "<repoPath>" status --porcelain -- .gitignore` is empty, then
-     `f="<repoPath>/.gitignore"; touch "$f"; for e in .factory/ graphify-out/; do grep -qxF "$e" "$f" || { [ -n "$(tail -c1 "$f")" ] && echo >> "$f"; echo "$e" >> "$f"; }; done`.
+     `f="<repoPath>/.gitignore"; touch "$f"; for e in .factory/ graphify-out/ .mcp.json; do grep -qxF "$e" "$f" || { [ -n "$(tail -c1 "$f")" ] && echo >> "$f"; echo "$e" >> "$f"; }; done`.
      Commit = `git -C "<repoPath>" add .gitignore && git -C "<repoPath>" commit -m "chore: ignore factory working files" -- .gitignore`
      (stages and commits only `.gitignore`). Make it when either:
      - the repo has no commits (`rev-parse -q --verify HEAD` fails): it becomes the FIRST commit, on the unborn
@@ -106,14 +115,10 @@ nothing is read from Trilium before step 9.
      Stop setup.
 8. **MCP gate.** `mcp__trilium__search_notes` must be callable: in your tool list, or loaded with ToolSearch query
    `+trilium` (max_results 20).
-   - Registered in this run → the stop below (still-callable tools use the old registration).
    - Callable → step 9.
-   - Not callable, step 4 found it "connected" (registered after this session started, or the session lost it) →
-     the stop below, no question.
-   - Stop: if `mcp__trilium__*` tools were not available in this session (or `trilium` was registered in this run),
-     tell the user to run `/mcp` → reconnect (or restart Claude Code; restart if `/mcp` already shows it connected)
-     and re-run `/factory:run`; stop (`factory-event stage --stage setup --status stopped </dev/null`; the next run
-     re-enters setup).
+   - Not callable → tell the user to run `/mcp` → reconnect `trilium` (approve the project server if Claude Code
+     asks; restart Claude Code instead if `/mcp` already shows it connected or "TLS env written") and re-run
+     `/factory:run`; Stop setup (the next run re-enters setup).
 9. **Trilium notes** (`$PLUGIN_ROOT/skills/run/references/trilium-schema.md`: Hierarchy, Titles, find or create).
    A reused note keeps its content and gets its labels re-set; `Factory Log` is append-only (never `set_note_content`).
    - Root: `mcp__trilium__search_notes("#factoryRoot")`: one hit → `<rootId>`; several → AskUserQuestion, one option
@@ -146,13 +151,15 @@ nothing is read from Trilium before step 9.
    <on|off>, dashboard <port|not running>")` (never the token).
 3. `factory-event stage --stage setup --status done </dev/null`; then `factory-preflight` again.
 4. Print one paragraph: what this run changed (note ids), what was already in place, what the user must still do
-   (`/plugin install superpowers@claude-plugins-official`, commit `.gitignore`, add `~/.local/bin` and `~/.bun/bin`
-   to the shell PATH, open `http://127.0.0.1:<port>`); next stage: examine.
+   (`/plugin install superpowers@claude-plugins-official`, commit `.gitignore`, restart Claude Code after "TLS env
+   written", add `~/.local/bin` and `~/.bun/bin` to the shell PATH, open `http://127.0.0.1:<port>`); next stage:
+   examine.
 
 ## Direct-command behaviour
 
 `/factory:setup` or `/factory:run setup`:
 - Runs every step even when `#stageSetup=done`: re-verifies and repairs; satisfied steps print one line.
-- Step 2 also asks when config exists: AskUserQuestion `Keep Trilium settings (<triliumUrl>) / Change URL / Change
-  token`; a change asks step 2's question for it, then re-runs steps 3–4 and ends at the step 8 stop.
+- Step 3 also asks when `trilium.configured=true`: AskUserQuestion `Keep Trilium settings (<url>, <source>) / Change
+  URL or token`; Change → tell the user to edit the `trilium` entry themselves (`url` = `<base>/mcp`, token after
+  `Bearer `; file as in `<edit>`), then `/mcp` → reconnect and re-run `/factory:run`; Stop setup.
 - If "Ensure setup" already ran setup in this invocation, do not run it twice. After Completion, stop (SKILL.md).

@@ -63,7 +63,7 @@ The dispatch brief gives absolute paths and values:
   `ls`, `cat`, `graphify query|explain|path`, run as `cd <repo> && …`). Never check out, merge, rebase, reset or
   push anything, `main` included; no `--force`, no `git clean`. Do not build, test or install.
 - Judge the plan, not the people: no findings outside your lens, no style preferences raised above `minor`.
-- Secrets: never read or print `~/.config/claude-factory/config.json`, `.env*` values or tokens; redact them.
+- Secrets: never read or print `~/.config/claude-factory/config.json`, `.mcp.json`, `.env*` values or tokens; redact them.
 - No subagents. Every finding cites its evidence.
 - Final message: ≤ 15 lines, then exactly one fenced json block, and nothing after it.
 

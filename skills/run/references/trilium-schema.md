@@ -19,6 +19,9 @@ Single source of truth for every Trilium note, title, label and search the facto
 ## Rules
 
 - **Only the orchestrator touches Trilium.** Agents never get `mcp__trilium__*` tools; they read file exports.
+- **Credentials**: Trilium URL + token live in the project `.mcp.json` (gitignored; `mcpServers.trilium`, `url`
+  `<base>/mcp`, `Authorization: Bearer <token>`); the global config holds only `dashboardPort`. Never read, print or
+  store the token anywhere else, in a note or label included.
 - **Every note is a `text` note whose content is Markdown.** Create with `mcp__trilium__create_note`
   (parent note id, title, type `text`, content); replace with `mcp__trilium__set_note_content`; add to
   the end with `mcp__trilium__append_to_note`; small in-place edits with `mcp__trilium__edit_note_content`.

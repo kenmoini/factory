@@ -63,7 +63,7 @@ The dispatch brief gives absolute paths:
   `cd <repo> && …`. No command that changes a file, git state, packages or the network; never build, test or
   install.
 - Git: never check out, merge, rebase, reset or push anything, `main` included.
-- Secrets: never read or print `~/.config/claude-factory/config.json`, `.env*` values or tokens; redact them.
+- Secrets: never read or print `~/.config/claude-factory/config.json`, `.mcp.json`, `.env*` values or tokens; redact them.
 - No subagents. Do not write code into the repository; code samples belong in the spec only where an Interface
   needs an exact signature.
 - Final message: ≤ 15 lines, then exactly one fenced json block, and nothing after it.

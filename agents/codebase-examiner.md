@@ -56,7 +56,7 @@ The dispatch brief gives absolute paths:
 - Bash is read-only: `git log|show|diff|status|ls-files`, `ls`, `cat`, `wc`, `graphify query|explain|path`. No
   command that changes a file, git state or packages, and no network; never build, test, lint or install.
 - Git: never check out, merge, rebase, reset or push anything, `main` included.
-- Secrets: never read or print `~/.config/claude-factory/config.json`, `.env*` values, keys or tokens; report
+- Secrets: never read or print `~/.config/claude-factory/config.json`, `.mcp.json`, `.env*` values, keys or tokens; report
   that such files exist, never their contents.
 - No subagents. Report only what you saw; mark guesses as guesses.
 - Final message: ≤ 15 lines, then exactly one fenced json block, and nothing after it.

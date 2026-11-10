@@ -11,6 +11,8 @@ agent dispatch rules in `$PLUGIN_ROOT/skills/run/references/agent-protocol.md`.
 - Agents receive Markdown exports under `.factory/` and return JSON; you turn their output into notes.
 - Never parse note bodies for state: decide from labels (`mcp__trilium__get_attributes`).
 - Follow the find-or-create rule from the schema; never create a duplicate title under the same parent.
+- Trilium URL + token live in the project `.mcp.json` (gitignored); the global config holds only `dashboardPort`.
+  The user types the token there; never ask for it, read `.mcp.json` into the conversation, or print it.
 
 ### 2. Every stage ends the same way
 
@@ -33,8 +35,8 @@ agent dispatch rules in `$PLUGIN_ROOT/skills/run/references/agent-protocol.md`.
 ### 4. Commits and branches
 
 - `<main>` is the default branch (`main`, else `master`; schema Placeholders). Your only commits on `<main>` are the
-  two scaffolding commits: `chore: ignore factory working files` (setup's `.gitignore`) and `chore: enforce
-  standards` (after `#approval=approved`).
+  two scaffolding commits: `chore: ignore factory working files` (setup's `.gitignore`: `.factory/`,
+  `graphify-out/`, `.mcp.json`) and `chore: enforce standards` (after `#approval=approved`).
 - Builders commit only on branch `<slug>` inside `<repoPath>/.factory/worktrees/<slug>`; the api-design stage commits
   its repo API docs there too (`docs(api): <slug>`). Nobody else commits on `<main>`.
 - `<main>` changes only through `factory-merge <repoPath> <slug> --message-file <file>` (`git merge --no-ff`), except
@@ -68,8 +70,10 @@ agent dispatch rules in `$PLUGIN_ROOT/skills/run/references/agent-protocol.md`.
 ### 8. The orchestrator never edits product code
 
 - You never Write/Edit files in the product source tree or the worktree (builders do), except these allowed writes:
-  `.factory/**` (exports, drafts, briefs, ledger, mockups), `.gitignore` entries (setup), approved scaffolding in
-  enforce-standards, repo API docs in api-design (in the workstream worktree, path from `#apiDocPath`).
+  `.factory/**` (exports, drafts, briefs, ledger, mockups), `.gitignore` entries (setup: `.factory/`, `graphify-out/`,
+  `.mcp.json`), setup's placeholder `trilium` entry in `.mcp.json` and `env` in `.claude/settings.local.json`,
+  approved scaffolding in enforce-standards, repo API docs in api-design (in the workstream worktree, path from
+  `#apiDocPath`).
 - Need a code change outside a task? Ask the user to add it to the plan (plan stage) rather than doing it.
 
 ### Context hygiene after compaction

@@ -26,9 +26,13 @@ commands are on the Bash PATH; if one is not found, call `$PLUGIN_ROOT/bin/<name
 Preflight: !`"${CLAUDE_PLUGIN_ROOT}/bin/factory-preflight" 2>/dev/null || echo '{"error":"preflight failed"}'`
 
 Fields: `config.global` (`~/.config/claude-factory/config.json`, or `config.json` under `FACTORY_CONFIG_DIR`,
-exists), `config.repo` (`<repoPath>/.factory/config.json` exists), `config.dir` (the global config directory);
-`trilium.{ok,url,version,mcpEndpoint,mcpRegistered,error}` (`url` = Trilium base URL from the global config;
-`ok` = ETAPI answered; `mcpEndpoint` = `<url>/mcp` answers; `mcpRegistered` = `claude mcp get trilium` succeeds);
+exists; it holds only `dashboardPort`), `config.legacyTriliumKeys` (that file still holds the old `triliumUrl` or
+`etapiToken`), `config.repo` (`<repoPath>/.factory/config.json` exists), `config.dir` (the global config directory);
+`trilium.{configured,placeholder,source,ok,url,version,mcpEndpoint,mcpRegistered,error}` (`configured` = a `trilium`
+http MCP server was found, `source` = where: `project` (`<repoPath>/.mcp.json`), `user` (`~/.claude.json`) or `env`;
+`placeholder` = its token is still `your-etapi-token` or empty, so nothing was sent; `url` = Trilium base URL; `ok` =
+ETAPI answered; `mcpEndpoint` = `<url>/mcp` answers; `mcpRegistered` = `claude mcp get trilium` succeeds; the token
+itself is never reported);
 `dashboard.{running,port}`; `git.{isRepo,root,branch,dirty,hasCommits}` (`root` = `<repoPath>` below; its basename = `<repoName>`, the project
 note title and `#project` value; never use one for the other);
 `factory.{configured,projectNoteId,activeWorkstream,worktree}`; `graphify.{installed,outPresent,ageMinutes,gitHooks}`;
@@ -59,17 +63,16 @@ stages: setup examine set-standards enforce-standards brainstorm uiux api-design
 Whatever the verb (except `status`, below), run the setup stage first (Dispatch below, with
 `$PLUGIN_ROOT/skills/run/stages/setup.md`) when any of these holds:
 - preflight `error`, `config.global=false`, `config.repo=false`, or no `factory.projectNoteId`;
-- `trilium.ok=false`;
+- `trilium.configured=false`, `trilium.placeholder=true` or `trilium.ok=false`;
 - no `mcp__trilium__*` tools in this session.
 
-Never trigger on `trilium.mcpRegistered=false`: its 3 s `claude mcp get` probe can time out on a healthy setup
-(setup step 4 re-checks the registration itself). `status` stays read-only: when a trigger holds it prints which
-one and `run /factory:setup`, then stops, without running setup.
+Never trigger on `trilium.mcpRegistered=false` (its 3 s `claude mcp get` probe can time out on a healthy setup) or
+on `config.legacyTriliumKeys` alone (setup offers the migration whenever it runs). `status` stays read-only: when a
+trigger holds it prints which one and `run /factory:setup`, then stops, without running setup.
 
-If setup has just registered the Trilium MCP server (`claude mcp add`), its tools load only after a reconnect:
-tell the user to run `/mcp` and reconnect `trilium` (or restart Claude Code), then re-run
-`/factory:run $ARGUMENTS`, and stop. Otherwise run `factory-preflight` again and continue with the verb, unless
-the verb is `setup`: then stop (it has just run).
+When setup stops for a user action (replace the placeholder token in `.mcp.json`, `/mcp` reconnect, restart), it
+ends the run: the user re-runs `/factory:run $ARGUMENTS` afterwards. Otherwise run `factory-preflight` again and
+continue with the verb, unless the verb is `setup`: then stop (it has just run).
 
 ## Dashboard
 
@@ -172,7 +175,7 @@ your own.
 ## Stage files
 
 All under `$PLUGIN_ROOT/skills/run/`:
-- `stages/setup.md`: config, Trilium + MCP, tools, project note and Factory Log, `.factory/`, dashboard.
+- `stages/setup.md`: config, Trilium `.mcp.json` + MCP, tools, project note and Factory Log, `.factory/`, dashboard.
 - `stages/examine.md`: greenfield dialogue or brownfield `codebase-examiner`; Goal (+ Codebase Examination).
 - `stages/set-standards.md`: `standards-researcher` + dialogue per area; Standards with `#lintCmd`, `#testCmd`, `#buildCmd`.
 - `stages/enforce-standards.md`: Enforcement Plan → approve/edit/skip → scaffold, lint/test, commit on `main`.

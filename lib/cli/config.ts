@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
-import { getPath, globalConfigPath, readGlobalConfig, readRepoConfig, repoConfigPath, setPath, writeGlobalConfig, writeRepoConfig, type GlobalConfig, type RepoConfig } from "../config";
+import { getPath, globalConfigPath, migrateTrilium, readGlobalConfig, readRepoConfig, repoConfigPath, setPath, writeGlobalConfig, writeRepoConfig, type GlobalConfig, type RepoConfig } from "../config";
 
-const USAGE = "usage: factory-config get <key> [--repo <dir>] | set <key> <value> [--repo <dir>] | path [--repo <dir>]";
+const USAGE =
+  "usage: factory-config get <key> [--repo <dir>] | set <key> <value> [--repo <dir>] | path [--repo <dir>] | migrate-trilium --repo <dir>";
 function usage(): never {
   console.error(USAGE);
   process.exit(2);
@@ -33,7 +34,19 @@ function invalidJson(file: string): boolean {
   }
 }
 
-if (cmd === "path") {
+if (cmd === "migrate-trilium") {
+  if (!repo || key !== undefined) usage();
+  // Prints only {"migrated":…,"mcpJson":<path>} or a fixed error text: never the token.
+  let out: { code: number; result: unknown };
+  try {
+    out = migrateTrilium(repo);
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException)?.code;
+    out = { code: 1, result: { migrated: false, error: `write failed${code ? ` (${code})` : ""}` } };
+  }
+  console.log(JSON.stringify(out.result));
+  process.exit(out.code);
+} else if (cmd === "path") {
   console.log(path);
 } else if (cmd === "get" && key) {
   const v = getPath(load(), key);

@@ -7,7 +7,7 @@ Design: `docs/superpowers/specs/2026-11-10-factory-plugin-design.md`.
 ## Requirements
 
 - Claude Code 2.1.x or later, with plugin support.
-- A TriliumNext instance 0.106 or later, with the MCP server enabled under Options -> AI/LLM -> MCP server, and an ETAPI token (Options -> ETAPI -> Create new ETAPI token).
+- A TriliumNext instance 0.106 or later, with the MCP server enabled under Options -> AI/LLM -> MCP server, and an ETAPI token (Options -> ETAPI -> Create new ETAPI token). You paste the token into the project's `.mcp.json` yourself; the factory never asks for it.
 - git.
 - The `superpowers` plugin from `claude-plugins-official` (`/plugin install superpowers@claude-plugins-official`).
 - bun, uv and graphify: setup installs them on your confirmation.
@@ -34,9 +34,17 @@ From a marketplace (placeholders are literal; fill in your own):
 ## First run
 
 1. In the repo you want to work on, run `/factory:run`.
-2. Setup walks through the config: Trilium URL and ETAPI token (stored in the global factory config, mode 600), tool installs, git, working files and the Trilium project notes. Each change is confirmed first.
-3. Setup registers the Trilium MCP server natively: `claude mcp add --scope user --transport http trilium <url>/mcp --header "Authorization: Bearer <token>"`.
-4. Run `/mcp` and reconnect (or restart Claude Code), then run `/factory:run` again. The MCP tools are only available after that.
+2. If no `trilium` MCP server is configured yet, setup asks only for the Trilium base URL and writes the project-scope `<repo>/.mcp.json` (mode 600, added to `.gitignore`, other servers kept) with a placeholder token:
+
+   ```json
+   { "mcpServers": { "trilium": { "type": "http", "url": "<triliumBaseUrl>/mcp", "headers": { "Authorization": "Bearer your-etapi-token" } } } }
+   ```
+
+   For an `https://` Trilium it also offers to write `NODE_TLS_REJECT_UNAUTHORIZED=0` into `<repo>/.claude/settings.local.json` (`env`), so Claude Code's own MCP client accepts a self-signed certificate. Then it stops.
+3. Open `<repo>/.mcp.json`, replace `your-etapi-token` with your ETAPI token (Options -> ETAPI in Trilium), run `/mcp` and reconnect (or restart Claude Code; approve the project server `trilium` if asked), then run `/factory:run` again. The token never passes through Claude.
+4. Setup then checks Trilium (version, MCP endpoint), installs tools, prepares git and the working files and creates the Trilium project notes. Each change is confirmed first.
+
+An existing `trilium` server in user scope (`~/.claude.json`) is used when the project has none. Upgrading from a version that kept the URL and token in `~/.config/claude-factory/config.json`: setup offers to move them, or run `factory-config migrate-trilium --repo <repo>` yourself (it writes `<repo>/.mcp.json`, gitignores it, deletes the two keys from the global config and never prints the token).
 
 ## Commands
 
@@ -79,7 +87,7 @@ Stage commands (each also available as `/factory:run <stage>`):
 
 ## Working files
 
-Created in the target repo by setup and gitignored (`.factory/` and `graphify-out/` are added to `.gitignore`):
+Created in the target repo by setup and gitignored (`.factory/`, `graphify-out/` and `.mcp.json` are added to `.gitignore`):
 
 ```
 .factory/
@@ -95,7 +103,7 @@ Created in the target repo by setup and gitignored (`.factory/` and `graphify-ou
   workstreams/    workstream working files
 ```
 
-The global config (Trilium URL, token, dashboard port) lives outside the repo; read it with `factory-config`.
+Trilium URL and token live in the project `.mcp.json` (gitignored). The global config (`~/.config/claude-factory/config.json`) holds only the dashboard port; read it with `factory-config`.
 
 ## Dashboard
 
@@ -109,7 +117,9 @@ A local web app (Bun, under `dashboard/`) shows each factory repo's workstream: 
 
 - `fable` model availability for the spec-writer falls back per Claude Code's rules. Verify in a smoke run via the subagent `.meta.json`.
 - `CLAUDE_CODE_SUBAGENT_MODEL` in user settings can override per-agent `model:`. Verify in a smoke run.
-- The Trilium MCP server connects only after `/mcp` reconnect or a restart.
+- The Trilium MCP server connects only after `/mcp` reconnect or a restart; Claude Code asks you to approve a new project `.mcp.json` server.
+- TLS: the plugin's own Trilium calls (preflight, setup checks) skip certificate verification by default, for self-signed certificates; set `FACTORY_TLS_VERIFY=1` to verify. Claude Code's MCP client verifies certificates unless `NODE_TLS_REJECT_UNAUTHORIZED=0` is in `<repo>/.claude/settings.local.json` `env` (setup offers it; it applies after a restart and turns verification off for everything Claude Code starts in that project).
+- Keep `.mcp.json` out of git: setup and `migrate-trilium` do not write to a `.mcp.json` that git tracks (the token would be committed) until it is untracked (`git rm --cached .mcp.json`; setup offers this).
 - `claude plugin validate` warns about a missing plugin icon.
 - superpowers is pinned and tested at 7.0.0.
 

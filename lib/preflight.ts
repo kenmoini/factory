@@ -1,10 +1,23 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { DEFAULT_PORT, globalConfigDir, readGlobalConfig, readRepoConfig } from "./config";
+import { DEFAULT_PORT, globalConfigDir, hasLegacyTriliumKeys, readGlobalConfig, readRepoConfig } from "./config";
+import { readTriliumMcp, tlsRejectUnauthorized, type TriliumMcp } from "./trilium-config";
 
 export type Preflight = {
-  config: { global: boolean; repo: boolean; dir: string };
-  trilium: { ok: boolean; url?: string; version?: string; mcpEndpoint?: boolean; mcpRegistered?: boolean; error?: string };
+  /** global: the global config file (dashboardPort) exists; legacyTriliumKeys: it still holds triliumUrl/etapiToken. */
+  config: { global: boolean; repo: boolean; dir: string; legacyTriliumKeys: boolean };
+  /** From the `trilium` MCP server entry (project .mcp.json, else user scope, else env); never the token. */
+  trilium: {
+    configured: boolean;
+    placeholder: boolean;
+    source?: TriliumMcp["source"];
+    ok: boolean;
+    url?: string;
+    version?: string;
+    mcpEndpoint?: boolean;
+    mcpRegistered?: boolean;
+    error?: string;
+  };
   dashboard: { running: boolean; port: number };
   git: { isRepo: boolean; root?: string; branch?: string; dirty?: boolean; hasCommits?: boolean };
   factory: { configured: boolean; projectNoteId?: string; activeWorkstream?: string; worktree?: string };
@@ -46,8 +59,9 @@ export async function preflight(opts: {
   const f = opts.fetchImpl ?? fetch;
   const rawExec = opts.exec ?? defaultExec;
   const exec: Exec = (cmd) => withTimeout(rawExec(cmd).catch(() => ({ code: 127, out: "" })), timeoutMs);
+  const tls = { rejectUnauthorized: tlsRejectUnauthorized(env) }; // Bun fetch option: off unless FACTORY_TLS_VERIFY=1
   const get = (url: string, headers?: Record<string, string>) =>
-    withTimeout(Promise.resolve().then(() => f(url, { headers, signal: AbortSignal.timeout(timeoutMs) })), timeoutMs);
+    withTimeout(Promise.resolve().then(() => f(url, { headers, signal: AbortSignal.timeout(timeoutMs), tls })), timeoutMs);
   const settle = async <T>(p: Promise<T>): Promise<T | undefined> => (await Promise.allSettled([p]))[0].status === "fulfilled" ? await p : undefined;
 
   const has = async (name: string) => (await settle(exec(["sh", "-c", `command -v ${name}`])))?.code === 0;
@@ -59,19 +73,21 @@ export async function preflight(opts: {
     }
   };
   const g = safe(() => readGlobalConfig(env), null);
+  const legacyTriliumKeys = hasLegacyTriliumKeys(g);
   const dir = safe(() => globalConfigDir(env), "");
   const port = g?.dashboardPort ?? DEFAULT_PORT;
   const cwd = opts.cwd;
 
   const graphifyInstalled = has("graphify");
+  // git: root is needed for graphify files / repo config / .mcp.json
+  const gitRun = async (args: string[]) => settle(exec(["git", "-C", cwd, ...args]));
+  const topP = gitRun(["rev-parse", "--show-toplevel"]);
   const trilium = triliumProbe();
   const dashboard = dashboardProbe();
   const tools = toolsProbe();
 
-  // git: root is needed for graphify files / repo config
-  const gitRun = async (args: string[]) => settle(exec(["git", "-C", cwd, ...args]));
   const [top, branch, status, head] = await Promise.all([
-    gitRun(["rev-parse", "--show-toplevel"]),
+    topP,
     gitRun(["rev-parse", "--abbrev-ref", "HEAD"]),
     gitRun(["status", "--porcelain"]),
     gitRun(["rev-parse", "HEAD"]),
@@ -97,15 +113,27 @@ export async function preflight(opts: {
     worktree: repoCfg?.activeWorkstream ? `.factory/worktrees/${repoCfg.activeWorkstream}` : undefined,
   };
 
+  /** Project `.mcp.json` in cwd; else at the git root (setup writes `<repoPath>/.mcp.json`); else user scope / env. */
+  async function triliumEntry(): Promise<TriliumMcp | null> {
+    const here = safe(() => readTriliumMcp(cwd, env), null);
+    if (here?.source === "project" || here?.source === "env") return here;
+    const t = await topP;
+    const gitRoot = t?.code === 0 && t.out !== "" ? t.out : undefined;
+    const atRoot = gitRoot && gitRoot !== cwd ? safe(() => readTriliumMcp(gitRoot, env), null) : null;
+    return atRoot?.source === "project" ? atRoot : here;
+  }
+
   function triliumProbe(): Promise<Preflight["trilium"]> { return (async (): Promise<Preflight["trilium"]> => {
-    if (!g || !g.triliumUrl) return { ok: false, error: "no config" };
-    const url = g.triliumUrl.replace(/\/+$/, "");
-    const out: Preflight["trilium"] = { ok: false, url };
-    const mcpP = get(`${url}/mcp`, { Authorization: `Bearer ${g.etapiToken}` });
+    const t = await triliumEntry();
+    if (!t) return { configured: false, placeholder: false, ok: false, error: "not configured" };
+    const url = t.baseUrl;
+    const out: Preflight["trilium"] = { configured: true, placeholder: t.placeholder, source: t.source, ok: false, url };
+    if (t.placeholder) return { ...out, error: "token placeholder" }; // never send the placeholder to Trilium
+    const mcpP = get(t.mcpUrl, { Authorization: `Bearer ${t.token}` });
     const regP = exec(["claude", "mcp", "get", "trilium"]);
     const done = Promise.allSettled([mcpP, regP]);
     try {
-      const res = await get(`${url}/etapi/app-info`, { Authorization: g.etapiToken });
+      const res = await get(`${url}/etapi/app-info`, { Authorization: t.token });
       if (!res.ok) {
         out.error = `HTTP ${res.status}`;
         await done;
@@ -163,7 +191,7 @@ export async function preflight(opts: {
 
   const [t, d, gr, tl] = await Promise.all([trilium, dashboard, graphify, tools]);
   return {
-    config: { global: g !== null, repo: repoCfg !== null, dir },
+    config: { global: g !== null, repo: repoCfg !== null, dir, legacyTriliumKeys },
     trilium: t,
     dashboard: d,
     git,

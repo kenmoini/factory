@@ -62,7 +62,7 @@ The dispatch brief gives absolute paths:
   is a reason to escalate.
 - Pass `path:` to EVERY Glob and Grep call: the task's worktree `<repo>/.factory/worktrees/<slug>` (the spec sits
   at `<repo>/.factory/tasks/<slug>/<taskId>/spec.md`), never the default directory, which is the main checkout.
-- Secrets: never read or print `~/.config/claude-factory/config.json`, `.env*` values or tokens; redact them.
+- Secrets: never read or print `~/.config/claude-factory/config.json`, `.mcp.json`, `.env*` values or tokens; redact them.
 - No subagents. When in doubt, escalate: a wrong approval ships broken code, a wrong escalation costs one human look.
 - Final message: ≤ 15 lines, then exactly one fenced json block, and nothing after it.
 
