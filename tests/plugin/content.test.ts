@@ -83,7 +83,7 @@ test("agents: frontmatter valid, no hooks/mcpServers/permissionMode, no mcp__", 
   expect(problems, problems.join("\n")).toEqual([]);
 });
 
-test.skipIf(!existsSync(abs("agents")))("agents: the set of agent files equals the 10 expected", () => {
+test("agents: the set of agent files equals the 10 expected", () => {
   const have = agentFiles().map((f) => f.replace(/^agents\//, "").replace(/\.md$/, ""));
   const msg = `missing: [${missing(AGENTS, have)}] unexpected: [${missing(have, AGENTS)}]`;
   expect([...have].sort(), msg).toEqual([...AGENTS].sort());
