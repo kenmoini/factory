@@ -16,5 +16,10 @@ for (const p of (process.env.FACTORY_REPOS ?? "").split(",").map((s) => s.trim()
   if (!app.addRepo(p)) console.warn(`factory-dashboard: no .factory/config.json in ${p}`);
 }
 
-const server = Bun.serve({ hostname: "127.0.0.1", port: config.port, fetch: app.fetch });
+const server = Bun.serve({
+  hostname: "127.0.0.1",
+  port: config.port,
+  fetch: app.fetch,
+  idleTimeout: 60, // Bun's 10 s default would cut SSE connections before the 15 s heartbeat
+});
 console.log(`factory-dashboard listening on http://127.0.0.1:${server.port}`);

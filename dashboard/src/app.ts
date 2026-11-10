@@ -21,6 +21,7 @@ export interface App {
   fetch: (req: Request) => Promise<Response>;
   routes: Record<string, unknown>;
   pollers: Map<string, Poller>;
+  tailers: Map<string, TranscriptTailer>;
   addRepo(path: string): RepoEntry | null;
   stop(): void;
 }
@@ -30,6 +31,8 @@ export function createApp(deps: AppDeps, opts: { heartbeatMs?: number } = {}): A
   const tailers = new Map<string, TranscriptTailer>();
   const lastTask = new Map<string, HookEvent>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  deps.registry.onEvict((id) => { tailers.get(id)?.stop(); tailers.delete(id); });
 
   function refresh(repoKey: string): void {
     if (timers.has(repoKey)) return;
@@ -64,5 +67,5 @@ export function createApp(deps: AppDeps, opts: { heartbeatMs?: number } = {}): A
   }
 
   const api = createApi({ deps, pollers, addRepo, tailers, lastTask, refresh, heartbeatMs: opts.heartbeatMs });
-  return { fetch: api.fetch, routes: {}, pollers, addRepo, stop };
+  return { fetch: api.fetch, routes: {}, pollers, tailers, addRepo, stop };
 }

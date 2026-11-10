@@ -20,7 +20,12 @@ export class TranscriptTailer {
   private retryMs: number;
   private maxRetries: number;
 
-  constructor(private path: string, private onStep: (s: Step) => void, opts: { pollMs?: number; retryMs?: number; maxRetries?: number } = {}) {
+  private resolve: () => string | null;
+  path: string | null;
+
+  constructor(pathOrResolve: string | (() => string | null), private onStep: (s: Step) => void, opts: { pollMs?: number; retryMs?: number; maxRetries?: number } = {}) {
+    this.resolve = typeof pathOrResolve === "function" ? pathOrResolve : () => pathOrResolve;
+    this.path = this.resolve();
     this.pollMs = opts.pollMs ?? 500;
     this.retryMs = opts.retryMs ?? 1000;
     this.maxRetries = opts.maxRetries ?? 30;
@@ -28,10 +33,11 @@ export class TranscriptTailer {
 
   start(): void {
     if (this.state === "stopped" || this.timer) return;
-    if (existsSync(this.path)) { this.begin(); return; }
+    if (this.path && existsSync(this.path)) { this.begin(); return; }
     this.state = "waiting";
     this.timer = setInterval(() => {
-      if (existsSync(this.path)) { this.clearTimer(); this.begin(); }
+      this.path = this.resolve() ?? this.path;
+      if (this.path && existsSync(this.path)) { this.clearTimer(); this.begin(); }
       else if (++this.retries >= this.maxRetries) { this.clearTimer(); this.state = "gone"; }
     }, this.retryMs);
     this.timer.unref?.();
@@ -40,7 +46,7 @@ export class TranscriptTailer {
   private begin(): void {
     this.state = "tailing";
     try {
-      this.watcher = watch(this.path, () => this.readMore());
+      this.watcher = watch(this.path!, () => this.readMore());
       this.watcher.on("error", () => { this.watcher?.close(); this.watcher = undefined; });
     } catch { /* poll fallback */ }
     this.timer = setInterval(() => this.readMore(), this.pollMs);
@@ -55,7 +61,7 @@ export class TranscriptTailer {
 
   /** Read whatever was appended since the last call. Guarded against re-entrancy. */
   readMore(): void {
-    if (this.reading || this.state === "stopped") return;
+    if (this.reading || this.state === "stopped" || !this.path) return;
     this.reading = true;
     try {
       const size = statSync(this.path).size;
@@ -74,10 +80,10 @@ export class TranscriptTailer {
       steps.forEach((s, i) => {
         const step = { ...s, seq: this.count + i };
         this.steps.push(step);
-        if (this.steps.length > CAP) this.steps.shift();
         try { this.onStep(step); } catch { /* subscriber error */ }
       });
       this.count += steps.length;
+      if (this.steps.length > CAP) this.steps.splice(0, this.steps.length - CAP);
     } catch { /* file vanished or unreadable; try again next tick */ }
     finally { this.reading = false; }
   }

@@ -1,5 +1,5 @@
 import { resolve, sep, join } from "node:path";
-import { readMeta, resolveTranscriptPath, cwdSlug } from "../agents/transcript-path";
+import { readMeta, resolveTranscriptPath } from "../agents/transcript-path";
 import type { AgentRegistry } from "../agents/registry";
 import { TranscriptTailer } from "../agents/tailer";
 import type { EventHub } from "../hub";
@@ -50,28 +50,30 @@ function onStart(repoKey: string, p: Record<string, unknown>, deps: EventDeps): 
   deps.tailers.get(agentId)?.stop();
   deps.tailers.delete(agentId);
 
-  let path = resolveTranscriptPath({ homeDir: deps.homeDir, cwd, agentId, sessionId });
-  if (!path && sessionId && SAFE.test(sessionId) && deps.homeDir) {
-    path = join(deps.homeDir, ".claude", "projects", cwdSlug(cwd), sessionId, "subagents", `agent-${agentId}.jsonl`);
-  }
+  const resolvePath = () => resolveTranscriptPath({ homeDir: deps.homeDir, cwd, agentId, sessionId });
+  const path = resolvePath();
   const meta = path ? readMeta(path) : null;
   const agent = deps.registry.start({
     agentId, agentType: str(p.agent_type) ?? meta?.agentType ?? "unknown", cwd, sessionId,
     description: str(p.description) ?? meta?.description, model: str(p.model) ?? meta?.model,
     transcriptPath: path ?? undefined,
   });
-  if (path) {
-    const tailer = new TranscriptTailer(path, (step) => {
+  // publish start before the tailer's first synchronous read can publish steps
+  deps.hub.publish(repoKey, { type: "agent", data: { op: "start", agent: { ...agent } } });
+  if (deps.homeDir) {
+    // re-run the lookup on each retry tick so a late-appearing transcript is still found
+    let metaReread = false;
+    const tailer: TranscriptTailer = new TranscriptTailer(resolvePath, (step) => {
       const cur = deps.registry.get(agentId);
       if (!cur) return;
       const patch: Partial<LiveAgent> = { stepCount: cur.stepCount + 1 };
-      if (!cur.taskNoteId || !cur.description) {
-        const m = readMeta(path!);
-        if (m?.description) {
-          patch.description = m.description;
-          const t = m.description.match(/\[task:([^\]]+)\]/);
-          if (t) patch.taskNoteId = t[1];
-        }
+      if (!cur.transcriptPath && tailer.path) patch.transcriptPath = tailer.path;
+      if (!metaReread && tailer.path) {
+        metaReread = true; // once, the first time the file is seen
+        const m = readMeta(tailer.path);
+        if (m?.description && !cur.description) patch.description = m.description;
+        const t = (patch.description ?? cur.description)?.match(/\[task:([^\]]+)\]/);
+        if (t && !cur.taskNoteId) patch.taskNoteId = t[1];
         if (m?.model && !cur.model) patch.model = m.model;
       }
       deps.registry.touch(agentId, patch);
@@ -80,13 +82,12 @@ function onStart(repoKey: string, p: Record<string, unknown>, deps: EventDeps): 
     deps.tailers.set(agentId, tailer);
     tailer.start();
   }
-  deps.hub.publish(repoKey, { type: "agent", data: { op: "start", agent: { ...agent } } });
   return ok();
 }
 
 function onStop(repoKey: string, p: Record<string, unknown>, deps: EventDeps): Response {
   const agentId = str(p.agent_id);
-  if (!agentId) return ok();
+  if (!agentId || !deps.registry.get(agentId)) return ok();
   let tailer = deps.tailers.get(agentId);
   const given = str(p.agent_transcript_path);
   const root = deps.homeDir ? join(deps.homeDir, ".claude", "projects") + sep : null;

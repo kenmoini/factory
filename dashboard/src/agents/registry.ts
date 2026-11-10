@@ -7,6 +7,16 @@ export class AgentRegistry {
   private recentTtlMs: number;
   private now: () => number;
 
+  private evictCbs: ((agentId: string) => void)[] = [];
+
+  /** Called whenever an agent is dropped from `recent` (cap or TTL). */
+  onEvict(cb: (agentId: string) => void): void { this.evictCbs.push(cb); }
+
+  private evict(id: string): void {
+    this.agents.delete(id);
+    for (const cb of this.evictCbs) { try { cb(id); } catch { /* ignore */ } }
+  }
+
   constructor(opts: { recentCap?: number; recentTtlMs?: number; now?: () => number } = {}) {
     this.recentCap = opts.recentCap ?? 50;
     this.recentTtlMs = opts.recentTtlMs ?? 30 * 60_000;
@@ -36,7 +46,7 @@ export class AgentRegistry {
     if (!a.finishedAt) {
       a.finishedAt = new Date(this.now()).toISOString();
       this.recentIds.push(agentId);
-      while (this.recentIds.length > this.recentCap) this.agents.delete(this.recentIds.shift()!);
+      while (this.recentIds.length > this.recentCap) this.evict(this.recentIds.shift()!);
     }
     return a;
   }
@@ -53,7 +63,7 @@ export class AgentRegistry {
     const cutoff = this.now() - this.recentTtlMs;
     this.recentIds = this.recentIds.filter((id) => {
       const a = this.agents.get(id);
-      if (a?.finishedAt && Date.parse(a.finishedAt) < cutoff) { this.agents.delete(id); return false; }
+      if (a?.finishedAt && Date.parse(a.finishedAt) < cutoff) { this.evict(id); return false; }
       return !!a;
     });
   }

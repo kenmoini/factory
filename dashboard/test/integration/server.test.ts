@@ -31,10 +31,10 @@ async function readUntil(reader: ReadableStreamDefaultReader<Uint8Array>, pred: 
   return acc;
 }
 
-function boot(fake: { url: string }, token: string, homeDir = "", opts: { heartbeatMs?: number } = {}) {
+function boot(fake: { url: string }, token: string, homeDir = "", opts: { heartbeatMs?: number } = {}, registry = new AgentRegistry()) {
   const config: DashboardConfig = { triliumUrl: fake.url, etapiToken: token, port: 0, pollMs: 60000, configDir: "", homeDir };
   const hub = new EventHub();
-  const app = createApp({ config, client: new TriliumClient({ baseUrl: fake.url, token }), repos: new RepoRegistry(), hub, registry: new AgentRegistry(), homeDir }, opts);
+  const app = createApp({ config, client: new TriliumClient({ baseUrl: fake.url, token }), repos: new RepoRegistry(), hub, registry, homeDir }, opts);
   const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: app.fetch });
   cleanups.push(() => { app.stop(); server.stop(true); });
   return { app, hub, base: `http://127.0.0.1:${server.port}` };
@@ -186,5 +186,37 @@ describe("dashboard server", () => {
     const t0 = Date.now();
     while (hub.count(repoDir) > 0 && Date.now() - t0 < 500) await Bun.sleep(10);
     expect(hub.count(repoDir)).toBe(0);
+  });
+
+  test("stopped agent keeps steps until registry eviction, then tailer is dropped", async () => {
+    const home = mkdtempSync(join(tmpdir(), "factory-home-"));
+    cleanups.push(() => rmSync(home, { recursive: true, force: true }));
+    const dir = join(home, ".claude/projects", cwdSlug(repoDir), "s1/subagents");
+    mkdirSync(dir, { recursive: true });
+    copyFileSync(join(import.meta.dir, "../fixtures/transcripts/agent-sample.jsonl"), join(dir, "agent-a9.jsonl"));
+    let t = Date.now();
+    const registry = new AgentRegistry({ recentTtlMs: 1000, now: () => t });
+    const { app, base } = boot(fake, "good", home, {}, registry);
+    const post = (b: unknown) => fetch(`${base}/api/events`, { method: "POST", body: JSON.stringify(b) });
+    await post({ event: "subagent-start", project: repoDir, payload: { agent_id: "a9", agent_type: "x", session_id: "s1", cwd: repoDir } });
+    await Bun.sleep(100);
+    await post({ event: "subagent-stop", project: repoDir, payload: { agent_id: "a9" } });
+    await post({ event: "subagent-stop", project: repoDir, payload: { agent_id: "never-started" } });
+    expect(app.tailers.has("never-started")).toBe(false);
+    const r: any = await (await fetch(`${base}/api/agents/a9/steps`)).json();
+    expect(r.steps.length).toBeGreaterThan(0);
+    expect(app.tailers.has("a9")).toBe(true);
+    t += 5000;
+    registry.prune();
+    expect(app.tailers.has("a9")).toBe(false);
+    expect((await fetch(`${base}/api/agents/a9/steps`)).status).toBe(404);
+  });
+
+  test("first request with unknown ws and no snapshot yields 404", async () => {
+    const { app, base } = boot(fake, "good");
+    app.addRepo(repoDir);
+    const res = await fetch(`${base}/api/state?repo=${encodeURIComponent(repoDir)}&ws=nope`);
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as any).error).toBe("unknown workstream");
   });
 });

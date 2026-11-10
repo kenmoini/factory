@@ -45,4 +45,15 @@ describe("AgentRegistry", () => {
     expect(r.list("/r1").recent).toHaveLength(0);
     expect(r.list("/r2").recent).toHaveLength(1);
   });
+  test("onEvict fires for cap and TTL evictions", () => {
+    let t = 1_000_000;
+    const r = new AgentRegistry({ recentCap: 1, recentTtlMs: 1000, now: () => t });
+    const ev: string[] = [];
+    r.onEvict((id) => ev.push(id));
+    for (const id of ["a", "b"]) { r.start({ ...base, agentId: id }); r.stop(id); t += 10; }
+    expect(ev).toEqual(["a"]);
+    t += 2000;
+    r.prune();
+    expect(ev).toEqual(["a", "b"]);
+  });
 });
