@@ -29,8 +29,7 @@ approved `API Design` note. Notation: `<projectNoteId>` = `factory.projectNoteId
    `factory-config set workstreams.<slug>.noteId <ws> --repo "<repoPath>"`.
 2. `mcp__trilium__get_attributes(<ws>)` shows `#stageBrainstorm=done`. Else refuse `Missing #stageBrainstorm=done on
    workstream <slug>: run /factory:brainstorm first.` and stop. `<planRev>` = its `#planRev`.
-3. `factory-event stage --stage api-design --status started --workstream <slug> </dev/null`.
-4. `#stageApi` is `done` or `skipped` → Direct-command behaviour below before step 1.
+3. `#stageApi` is `done` or `skipped` → Direct-command behaviour below before step 1.
 
 ## Procedure
 

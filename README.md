@@ -1,6 +1,6 @@
 # factory — Claude Software Factory plugin
 
-A Claude Code plugin that turns a git repo into a Claude-driven software factory. Trilium holds all knowledge, planning and tracking; Graphify keeps a code graph of the repo; `/factory:run` is the single entry point and orchestrates the stage pipeline (setup, examine, standards, brainstorm, UI/UX, API design, plan, validate, execute). The session that runs it is the orchestrator: it spawns every subagent and is the only writer of Trilium. A local web dashboard (separate plan) will show workstream documents and a Kanban board.
+A Claude Code plugin that turns a git repo into a Claude-driven software factory. Trilium holds all knowledge, planning and tracking; Graphify keeps a code graph of the repo; `/factory:run` is the single entry point and orchestrates the stage pipeline (setup, examine, set-standards, enforce-standards, brainstorm, UI/UX, API design, plan, validate, execute). The session that runs it is the orchestrator: it spawns every subagent and is the only writer of Trilium. A local web dashboard (separate plan) will show workstream documents and a Kanban board.
 
 Design: `docs/superpowers/specs/2026-11-10-factory-plugin-design.md`.
 
@@ -46,8 +46,8 @@ From a marketplace (placeholders are literal; fill in your own):
 |---|---|
 | (none) | Continue the pipeline from the next unfinished stage |
 | `status` | Show project, workstream and task status |
-| `approve <task>` | Approve a task waiting at the human gate (for example `T-001`) |
-| `reject <task> "notes"` | Reject it with reasons; the notes go back to the builder |
+| `approve <task>` | Approve an escalated (`needs-human`) task so it merges (for example `T-001`) |
+| `reject <task> "notes"` | Reject an escalated task with reasons; the notes go back to the builder |
 | `<stage>` | Run one stage (verifies prior stages first) |
 | `--workstream <slug>` | Use this workstream instead of the active one |
 
@@ -72,8 +72,9 @@ Stage commands (each also available as `/factory:run <stage>`):
 - Stages run in order; each checks that the prior stages' labels exist in Trilium.
 - Trilium is the source of truth, under `ClaudeProjects/<repo>` (project note, Factory Log, workstream documents, milestones, tasks).
 - Each workstream gets one git worktree and branch named by its slug, at `.factory/worktrees/<slug>`.
-- Execute works one task at a time: spec, build, four parallel reviews, approve, then a local `--no-ff` merge to `main`.
-- The human gate: you `approve` or `reject` each task. Nothing merges without approval.
+- Execute works one task at a time: spec, build, four parallel reviews, approve, then a local `--no-ff` merge to the default branch (`main`, else `master`).
+- There is no per-task human gate: once the four reviews pass, the approver agent approves and the task merges automatically. You decide only escalated tasks (`needs-human`: fix-round cap reached, approver escalation, builder, spec-writer or reviewer failure, unresolved merge conflict) with `/factory:run approve <task>` or `/factory:run reject <task> "notes"`. The documents (Goal, Standards, Enforcement Plan, Spec, Plan, UI-UX Spec, API Design) are approved by you in the session as each stage asks.
+- Builders run lint and tests in the worktree; re-running the tests on the default branch after each merge is opt-in (Standards label `#postMergeSmoke=true`).
 - The orchestrator never edits product code; builders do, in worktrees.
 
 ## Working files
@@ -82,7 +83,12 @@ Created in the target repo by setup and gitignored (`.factory/` and `graphify-ou
 
 ```
 .factory/
-  config.json     repo config (cached project note id)
+  config.json     repo config (cached project note id, active workstream)
+  state.json      execute ledger (Trilium wins when they disagree)
+  docs/           exports of the project documents for agents
+  examine/        examine drafts and codebase-examiner output
+  research/       standards research questions, answers, report and Standards draft
+  enforce/        enforcement plan file drafts, lint/test logs, applied.txt
   worktrees/      one git worktree per workstream
   mockups/        UI mockups
   tasks/          task working files

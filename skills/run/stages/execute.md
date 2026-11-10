@@ -60,7 +60,7 @@ Follow execute-loop.md § SPEC.
    Write: <taskDir>/spec.md
    Return: ≤15 lines then exactly one fenced json block matching your contract
    ```
-4. Parse (LAST json; none → BLOCKED); run-end. `DONE` → doc(`Task Spec`, task-spec, `#factoryDoc=task-spec`), body
+4. Parse; run-end. `DONE` → doc(`Task Spec`, task-spec, `#factoryDoc=task-spec`), body
    `spec.md`; log `spec written`.
 
 Next: `DONE` → BUILD; `NEEDS_CONTEXT` → Answer; BLOCKED → respawn once, again → NEEDS-HUMAN(`spec-failed`).
@@ -80,7 +80,7 @@ Follow execute-loop.md § BUILD. Resume (`building`): its resume table row, neve
    Return: ≤15 lines then exactly one fenced json block matching your contract
    ```
 4. `set_attribute(<tn>, builderAgentId=<agentId>)`; ledger `agents.builder`.
-5. Parse (LAST json; none → BLOCKED); run-end. `DONE`|`DONE_WITH_CONCERNS` with head = `#base` → BLOCKED ("no
+5. Parse; run-end. `DONE`|`DONE_WITH_CONCERNS` with head = `#base` → BLOCKED ("no
    commits"); else doc(`Build Report`, build-report, `#factoryDoc=build-report`), body `report.md`; log concerns.
 
 Next: `DONE`|`DONE_WITH_CONCERNS` → REVIEW (from BUILD); `NEEDS_CONTEXT` → Answer; `BLOCKED` →
@@ -98,7 +98,7 @@ Follow execute-loop.md § REVIEW.
 3. `<open>` = `<taskDir>/open-findings-R<n-1>-human.json`, else `…-R<n-1>.json`, if present; none → drop
    `, open=<open>`. run-start per reviewer (title `<ts> <agent> <reviewer> pending`, renamed `<ts> <agent> <reviewer>
    <agentId>`). Send the four Agent calls in a single assistant message (resume: dispatch only reviewers without
-   `review-R<n>-<reviewer>.json`; read the others' JSON from disk); run them in the foreground
+   `review-R<n>-<reviewer>.json`; the others: their JSON from disk, then step 4's doc()); run them in the foreground
    (`run_in_background: false`); wait for all four results. Description
    `<agent> <T> R<n> [task:<tn>]`:
    ```
@@ -111,7 +111,7 @@ Follow execute-loop.md § REVIEW.
    `<Lens>`, `<extra>`: `security-reviewer` Security, none; `ux-reviewer` UX, `, uiux=<docs>/uiux.md` (UI-UX
    Spec export; `none` if absent); `ui-design-reviewer` UI design, same + `, mockups=<repoPath>/.factory/mockups/<slug>/`
    (`none` if absent); `code-reviewer` Code, `, standards=<docs>/standards.md, plan=<docs>/plan.md`.
-4. Per result: parse (LAST json; none → BLOCKED); recompute `verdict`; write `<taskDir>/review-R<n>-<reviewer>.json`;
+4. Per result: parse; recompute `verdict`; write `<taskDir>/review-R<n>-<reviewer>.json`;
    doc(`Review R<n> <reviewer>`, review, `#factoryReview`, `#round=<n>`, `#reviewer=<reviewer>`, `#verdict`);
    run-end. If a reviewer errors or returns no parseable JSON block (BLOCKED), respawn it once (alone), then
    NEEDS-HUMAN(`reviewer-failed`).
@@ -136,7 +136,7 @@ Follow execute-loop.md § FIX.
    `<section>` = `Round <n>` (`Round <n> (human reject)` for a `-human` `<F>`). SendMessage error → fresh
    `factory:builder` (`builder <T> R<n> [task:<tn>]`), BUILD brief with `Task: Fix round <n> of <T> <title>
    [task:<tn>]` and `, findings=<F>`; `set_attribute(<tn>, builderAgentId=<id>)`; ledger `agents.builder`.
-4. Parse (LAST json; none → BLOCKED); run-end. `DONE`|`DONE_WITH_CONCERNS` with head = `#head` (`#base` if empty) →
+4. Parse; run-end. `DONE`|`DONE_WITH_CONCERNS` with head = `#head` (`#base` if empty) →
    BLOCKED ("no new commits"); else `append_to_note(<Build Report>, <new report.md section>)` (doc() it if absent).
 
 Next: new commits → REVIEW (from FIX, scoped); `NEEDS_CONTEXT` → Answer; `BLOCKED` → NEEDS-HUMAN(`builder-blocked`).
@@ -156,7 +156,7 @@ Follow execute-loop.md § APPROVE.
    Write: none
    Return: ≤15 lines then exactly one fenced json block matching your contract
    ```
-5. Parse (LAST json; none → BLOCKED); verdict → doc(`Approval R<n>`, approval, `#factoryDoc=approval`, `#round=<n>`,
+5. Parse; verdict → doc(`Approval R<n>`, approval, `#factoryDoc=approval`, `#round=<n>`,
    `#verdict=APPROVE|ESCALATE`); run-end.
 
 Next: `APPROVE` → MERGE; `ESCALATE` → NEEDS-HUMAN(`approver`); BLOCKED → respawn once, again → NEEDS-HUMAN(`approver`).
@@ -166,12 +166,13 @@ Print: `<T> <title>: APPROVE (round <n>)`.
 
 Follow execute-loop.md § MERGE. Resume (`merging`): step 2.
 1. status(merging).
-2. In `<repoPath>` (main checkout): `factory-merge <repoPath> <slug> "Merge <slug>: <T> <title>"`.
+2. In `<repoPath>` (`<main>` checkout): write `Merge <slug>: <T> <title>` to `<taskDir>/merge-msg.txt`;
+   `factory-merge <repoPath> <slug> --message-file <taskDir>/merge-msg.txt`.
 
 | Result (exit) | Next |
 |---|---|
-| `merged` (0), smoke `cd <repoPath> && <#testCmd>` passes or no `#testCmd` | DONE(`sha`) |
-| `merged`, smoke fails | DONE steps 1–3, `set_attribute(<ws>, wsStatus=paused)`, log `smoke failed on main <sha>`, tell the user, stop |
+| `merged` (0); smoke (`#postMergeSmoke=true` and `#testCmd` set: `cd <repoPath> && <#testCmd>`) passes or skipped | DONE(`sha`) |
+| `merged`, smoke fails | DONE steps 1–3, `set_attribute(<ws>, wsStatus=paused)`, log `smoke failed on <main> <sha>`, tell the user, stop |
 | `up-to-date` (0) | DONE(`git -C <repoPath> rev-parse HEAD`) |
 | `conflict` (2) / `dirty` (3), `error` (1) | conflict sub-flow / show them, touch nothing, stop |
 | sub-flow: `k > 2`; builder BLOCKED, NEEDS_CONTEXT or no new commits; review and r2 CHANGES | NEEDS-HUMAN(`merge-conflict`) |

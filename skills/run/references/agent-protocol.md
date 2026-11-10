@@ -13,6 +13,9 @@ parsed. Agent files (`agents/*.md`) copy their contract and the graphify paragra
 - Around every dispatch: Agent Run note before, rename/labels after (convention in `trilium-schema.md`).
 - Follow-ups go to the same agent with `SendMessage(to: <agentId>, message: …)`; the message starts with
   `[task:<noteId>]` and ends with `Return the same contract.`
+- `SendMessage` replies are asynchronous. After `SendMessage` to a running/finished agent, do NOT parse the
+  acknowledgement. Wait for the agent's completion notification; its final message holds the JSON block. Read git
+  state (head, commits) only after that message.
 - Path shorthands below are expanded to absolute paths in the brief: `<repoPath>` absolute repo root;
   `<wt>` = `<repoPath>/.factory/worktrees/<slug>`; `<docs>` = `<repoPath>/.factory/workstreams/<slug>/docs`;
   `<taskDir>` = `<repoPath>/.factory/tasks/<slug>/<taskId>`; `$PLUGIN_ROOT` = the plugin root given in SKILL.md.

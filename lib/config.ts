@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { dirname, join } from "node:path";
 
 export type GlobalConfig = { triliumUrl: string; etapiToken: string; dashboardPort: number };
-export type WorkstreamEntry = { noteId: string; branch: string; worktree: string };
+export type WorkstreamEntry = { noteId?: string; branch: string; worktree: string };
 export type RepoConfig = { projectNoteId?: string; activeWorkstream?: string; workstreams: Record<string, WorkstreamEntry> };
 
 export const DEFAULT_PORT = 7777;

@@ -10,6 +10,9 @@ Single source of truth for every Trilium note, title, label and search the facto
 - `<repoPath>`: absolute path of the repo root. Value of `#repoPath`; the directory passed to `--repo`, `git -C`,
   `factory-merge` and every `.factory/` path (`<repoPath>/.factory/…`). Never use one where the other is meant.
 - `<slug>` workstream slug; `<T-NNN>` task id; `<noteId>` Trilium note id; `<ISO ts>` see Timestamps below.
+- `<main>`: the default branch, written out by name: `main` if `git -C <repoPath> rev-parse -q --verify refs/heads/main`
+  succeeds, else `master` if that branch exists, else `git -C <repoPath> branch --show-current` (what `lib/git.ts`
+  `defaultBranch()` picks for `factory-merge` and `factory-worktree`). Never assume it is called `main`.
 - Template placeholders `{{snake_case}}` take plain text. `{{…_json}}` placeholders take a pre-escaped JSON literal
   (serialise the value: text becomes a quoted, escaped JSON string; lists become arrays); never paste raw text there.
 
@@ -72,7 +75,7 @@ root
       ├─ Goal                          #factoryDoc=goal #approval=approved
       ├─ Codebase Examination          #factoryDoc=examination  (brownfield only)
       ├─ Standards                     #factoryDoc=standards #lintCmd #testCmd #buildCmd #ciPlatform #approval
-      │                                #apiDocPath
+      │                                #apiDocPath #postMergeSmoke
       ├─ Enforcement Plan              #factoryDoc=enforcement-plan #approval=pending|approved|rejected #appliedSha
       ├─ Agent Runs                    container for runs without a task
       │  └─ <ISO ts> <agentType> [<lens>] <agentId>   #factoryAgentRun …
@@ -127,7 +130,8 @@ placeholders untouched (the one exception to "fill every placeholder"); the task
 | `#testCmd` | Standards | shell command; empty = none |
 | `#buildCmd` | Standards | shell command; empty = none |
 | `#ciPlatform` | Standards | e.g. `github-actions` \| `gitlab-ci` \| `none` |
-| `#appliedSha` | Enforcement Plan | sha of the `chore: enforce standards` commit on `main` |
+| `#postMergeSmoke` | Standards | `true` \| `false` (default `false`; absent = `false`): opt-in post-merge smoke, `#testCmd` run on `<main>` after each task merge |
+| `#appliedSha` | Enforcement Plan | sha of the `chore: enforce standards` commit on `<main>` |
 | `#factoryAgentRun` | agent run note | marker |
 | `#agentType` | agent run | agent name: `spec-writer` \| `builder` \| `security-reviewer` \| `ux-reviewer` \| `ui-design-reviewer` \| `code-reviewer` \| `approver` \| `codebase-examiner` \| `standards-researcher` \| `plan-adversary` |
 | `#agentId` | agent run; task | agent id from the Agent tool result; on a task: id of the most recent agent run for it |
@@ -166,7 +170,7 @@ placeholders untouched (the one exception to "fill every placeholder"); the task
 | `#dependsOn` | task | comma list of task ids (`T-001,T-003`) or empty |
 | `#base` | task | sha of the branch HEAD when BUILD started (moves after a conflict rebase) |
 | `#head` | task | sha of the worktree HEAD at the latest review |
-| `#mergedSha` | task | sha of the `--no-ff` merge commit on `main` |
+| `#mergedSha` | task | sha of the `--no-ff` merge commit on `<main>` |
 | `#builderAgentId` | task | agent id of the builder (target of `SendMessage` fix rounds) |
 | `#escalation` | task | `fix-cap` \| `approver` \| `builder-blocked` \| `spec-failed` \| `merge-conflict` \| `reviewer-failed`; deleted when the task leaves `needs-human`/`blocked` |
 | `#factoryReview` | Review note | marker |

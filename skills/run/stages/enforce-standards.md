@@ -61,7 +61,8 @@ scaffolding commit on `main` that SOP 4 allows (`chore: enforce standards`). `<p
 
    Action (the template's column): `create` (missing), `update` (incomplete: add only what is missing, keep the
    rest), `keep` (complete, or not chosen). Replacing a file (e.g. an old CI config) needs its own `delete` row.
-   **Dirty paths** (`git -C "<repoPath>" status --porcelain`): a path outside these rows → Stopped
+   **Dirty paths** (`git -C "<repoPath>" status --porcelain --untracked-files=all`, so new files inside new
+   directories are listed one by one): a path outside these rows → Stopped
    (`main has unrelated changes: <paths>; commit or stash them first`). A row path that is dirty gets `update` (the
    commit includes it). Unless it is `.gitignore` (setup leaves it uncommitted) or listed in
    `<repoPath>/.factory/enforce/applied.txt` (applied by an earlier run that stopped), mark its Present cell
@@ -111,7 +112,8 @@ scaffolding commit on `main` that SOP 4 allows (`chore: enforce standards`). `<p
      `mcp__trilium__append_to_note(<Factory Log>, "- <ISO ts> [enforce-standards] plan approved")`. Nothing to
      enforce → `mcp__trilium__edit_note_content`: Status `approved`, Decision `Approved <ISO ts>; nothing to apply`;
      re-export; no `#appliedSha`; step 8. Else steps 5–8.
-5. **Apply.** Repeat step 1's unrelated-changes check (fails → Stopped). Each `create`/`update` path:
+5. **Apply.** Repeat step 1's unrelated-changes check (`git -C "<repoPath>" status --porcelain --untracked-files=all`;
+   fails → Stopped). Each `create`/`update` path:
    `mkdir -p "$(dirname "<repoPath>/<path>")" && cp "<repoPath>/.factory/enforce/files/<path>" "<repoPath>/<path>"`;
    each `delete` row: `git -C "<repoPath>" rm -q -- "<path>"`. Nothing else. Write the applied paths, one per line,
    to `<repoPath>/.factory/enforce/applied.txt`.
@@ -161,7 +163,7 @@ Exports: project documents live at `<repoPath>/.factory/docs/<kind>.md`; drafts,
 `/factory:enforce-standards` or `/factory:run enforce-standards` when `#stageEnforce` is `done` or `skipped`:
 AskUserQuestion "enforce-standards is already <done|skipped> (Enforcement Plan <planNoteId>). Run it again?" —
 options `Re-run (overwrite the document, keep labels)` / `Stop`.
-- `Stop` → no writes; `factory-event stage --stage enforce-standards --status done </dev/null`; stop.
+- `Stop` → no writes; `factory-event stage --stage enforce-standards --status stopped </dev/null`; stop.
 - `Re-run` → steps 1–8 and Completion. The plan note is overwritten in place with `#approval=pending`; an earlier
   `#appliedSha` stays until a new commit replaces it. `#stageEnforce` keeps its value until Completion;
   `Skip stage` on a re-run leaves an earlier `done` unchanged.

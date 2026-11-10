@@ -148,7 +148,7 @@ command refreshes those copies whenever an approved document changes.
 
 `/factory:examine` or `/factory:run examine` when `#stageExamine=done`: AskUserQuestion "examine is already done
 (Goal <goalNoteId>). Run it again?" — options `Re-run (overwrite the document, keep labels)` / `Stop`.
-- `Stop` → no writes; `factory-event stage --stage examine --status done </dev/null`; stop.
+- `Stop` → no writes; `factory-event stage --stage examine --status stopped </dev/null`; stop.
 - `Re-run` → steps 1–9 and Completion. Until `Approve`, the approved `Goal`, `Codebase Examination`, their labels,
   `#projectKind` and the exports stay as they are (a `Stop` changes none of them); on `Approve` the same notes are
   overwritten in place (find or create, same note ids). `#stageExamine` stays `done` throughout. Later stages are

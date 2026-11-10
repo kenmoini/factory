@@ -134,9 +134,11 @@ test("labels: declaredLabels matches exact tokens only", () => {
   expect(d.has("statusReason")).toBe(true);
   expect(d.has("kind")).toBe(true);
 });
-test("labels: every #label used in stages/refs/agents is defined in trilium-schema.md", () => {
+test("labels: every #label used in SKILL.md/stages/refs/templates/agents is defined in trilium-schema.md", () => {
   const files = [
+    ...["skills/run/SKILL.md"].filter((f) => existsSync(abs(f))),
     ...mdIn("skills/run/stages"),
+    ...mdIn("skills/run/templates"),
     ...["sop", "agent-protocol", "execute-loop"].map((n) => `skills/run/references/${n}.md`).filter((f) => existsSync(abs(f))),
     ...agentFiles(),
   ];

@@ -29,8 +29,7 @@ snapshot: brainstorm may have changed it); `<ws>` = its note id; `<docs>` =
    `factory-config set workstreams.<slug>.noteId <ws> --repo "<repoPath>"`.
 2. `mcp__trilium__get_attributes(<ws>)` shows `#stageBrainstorm=done`. Else refuse `Missing #stageBrainstorm=done on
    workstream <slug>: run /factory:brainstorm first.` and stop. `<planRev>` = its `#planRev`.
-3. `factory-event stage --stage uiux --status started --workstream <slug> </dev/null`.
-4. `#stageUiux` is `done` or `skipped` → Direct-command behaviour below before step 1.
+3. `#stageUiux` is `done` or `skipped` → Direct-command behaviour below before step 1.
 
 ## Procedure
 

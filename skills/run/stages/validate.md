@@ -26,8 +26,7 @@ Lenses, exactly: `feasibility`, `missing-requirements`, `security`, `ux`, `seque
    `factory-config set workstreams.<slug>.noteId <ws> --repo "<repoPath>"`.
 2. `mcp__trilium__get_attributes(<ws>)` shows `#stagePlan=done`. Else refuse `Missing #stagePlan=done on workstream
    <slug>: run /factory:plan first.` and stop. `<planRev>` = its `#planRev`.
-3. `factory-event stage --stage validate --status started --workstream <slug> </dev/null`.
-4. `#stageValidate=pass` and `#validatedPlanRev` equals `<planRev>` → Direct-command behaviour below before step 1.
+3. `#stageValidate=pass` and `#validatedPlanRev` equals `<planRev>` → Direct-command behaviour below before step 1.
 
 ## Procedure
 

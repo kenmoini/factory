@@ -56,11 +56,15 @@ stages: setup examine set-standards enforce-standards brainstorm uiux api-design
 
 ## Ensure setup
 
-Whatever the verb, run the setup stage first (Dispatch below, with `$PLUGIN_ROOT/skills/run/stages/setup.md`)
-when any of these holds:
+Whatever the verb (except `status`, below), run the setup stage first (Dispatch below, with
+`$PLUGIN_ROOT/skills/run/stages/setup.md`) when any of these holds:
 - preflight `error`, `config.global=false`, `config.repo=false`, or no `factory.projectNoteId`;
-- `trilium.ok=false` or `trilium.mcpRegistered=false`;
+- `trilium.ok=false`;
 - no `mcp__trilium__*` tools in this session.
+
+Never trigger on `trilium.mcpRegistered=false`: its 3 s `claude mcp get` probe can time out on a healthy setup
+(setup step 4 re-checks the registration itself). `status` stays read-only: when a trigger holds it prints which
+one and `run /factory:setup`, then stops, without running setup.
 
 If setup has just registered the Trilium MCP server (`claude mcp add`), its tools load only after a reconnect:
 tell the user to run `/mcp` and reconnect `trilium` (or restart Claude Code), then re-run
@@ -105,8 +109,9 @@ Rows 0–3 and graph are project labels; rows 4–9 live on the workstream note.
   /factory:set-standards first.`, and stop. `uiux`, `api-design`, `plan`, `validate`, `execute` with no `--workstream`
   and no `factory.activeWorkstream` → refuse `No active workstream: run /factory:brainstorm first.` and stop. A stage
   already done may run again; its stage file handles redo/realign.
-- **No verb**: run the first stage in # order that is not done, then the next, and so on, pausing only at human
-  gates (SOP 6). Workstream stages need a workstream: none active → brainstorm. When every stage of the active
+- **No verb**: run the first stage in # order that is not done; when it completes (SOP 2 `done`), the next, and so
+  on. Human gates (SOP 6) are asked in place; any stop, refusal, or human gate that parks work ends the run (Dispatch
+  step 4). Workstream stages need a workstream: none active → brainstorm. When every stage of the active
   workstream is done, say so and AskUserQuestion `Brainstorm a new workstream / Stop`.
 - `skipped` is set only from an explicit user choice (an AskUserQuestion answer); never infer it and never set it
   to unblock a prerequisite.
@@ -119,7 +124,9 @@ Same path for every stage, however invoked (no verb, stage verb, `/factory:<stag
 3. Read `$PLUGIN_ROOT/skills/run/stages/<stage>.md` and follow it step by step, reading the references and
    templates (`$PLUGIN_ROOT/skills/run/templates/`) it names when it names them. Every Agent dispatch follows
    `$PLUGIN_ROOT/skills/run/references/agent-protocol.md`.
-4. When the stage ends (SOP 2), re-check the table: continue (no verb) or stop (direct stage verb).
+4. When the stage ends, re-check the table. A stage that completes (SOP 2 `done`) → next stage (no verb) or stop
+   (direct stage verb). Any stop, refusal, or human gate that parks work (SOP 2 `stopped`, a refused prerequisite,
+   a `needs-human` or paused task) → end the run; never re-enter the stage you just left.
 
 Use the Skill tool only for the third-party skills `superpowers:brainstorming`, `superpowers:writing-plans` and
 `graphify`, where a stage file says so; never invoke a `factory:*` skill from here.

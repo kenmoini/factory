@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -67,4 +67,86 @@ test("ignored untracked files are not dirty; missing branch errors", async () =>
   expect((await mergeBranch({ repoDir: d, branch: "feat", message: "m" })).result).toBe("merged");
   const e = await mergeBranch({ repoDir: d, branch: "nope", message: "m" });
   expect(e).toEqual({ result: "error", message: "no such branch: nope" });
+});
+
+// ---------- bin/factory-merge exit codes ----------
+const BIN = join(import.meta.dir, "../../bin/factory-merge");
+const GIT_ENV = { GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" };
+const cli = (...args: string[]) => {
+  const p = Bun.spawnSync([BIN, ...args], { env: { ...process.env, ...GIT_ENV }, stdout: "pipe", stderr: "pipe" });
+  const out = p.stdout.toString().trim();
+  return { code: p.exitCode, out, json: out ? JSON.parse(out) : null };
+};
+const USAGE = "usage: factory-merge <repo> <branch> (<message> | --message-file <path>) [--into <branch>]";
+
+describe("bin/factory-merge", () => {
+  test("merged 0, then up-to-date 0", () => {
+    const d = repo();
+    edit(d, "feat", "feat");
+    const a = cli(d, "feat", "merge feat");
+    expect(a.code).toBe(0);
+    expect(a.json.result).toBe("merged");
+    const b = cli(d, "feat", "again");
+    expect(b.code).toBe(0);
+    expect(b.json).toEqual({ result: "up-to-date" });
+  });
+
+  test("conflict 2", () => {
+    const d = repo();
+    edit(d, "feat", "feat");
+    writeFileSync(join(d, "f.txt"), "mainline\nx\n");
+    g(d, "commit", "-qam", "main edit");
+    const r = cli(d, "feat", "m");
+    expect(r.code).toBe(2);
+    expect(r.json).toEqual({ result: "conflict", files: ["f.txt"] });
+  });
+
+  test("dirty 3", () => {
+    const d = repo();
+    edit(d, "feat", "feat");
+    writeFileSync(join(d, "f.txt"), "dirty\n");
+    const r = cli(d, "feat", "m");
+    expect(r.code).toBe(3);
+    expect(r.json.result).toBe("dirty");
+  });
+
+  test("error 1", () => {
+    const d = repo();
+    const r = cli(d, "nope", "m");
+    expect(r.code).toBe(1);
+    expect(r.json).toEqual({ result: "error", message: "no such branch: nope" });
+  });
+
+  test("usage errors exit 1 with a JSON error (never 2, which means conflict)", () => {
+    const d = repo();
+    for (const args of [[], [d], [d, "feat"], [d, "feat", "m", "extra"], [d, "feat", "m", "--into"], [d, "feat", "--message-file"]]) {
+      const r = cli(...args);
+      expect(r.code).toBe(1);
+      expect(r.json).toEqual({ result: "error", message: USAGE });
+    }
+  });
+
+  test("--message-file supplies the message and wins over the positional", () => {
+    const d = repo();
+    edit(d, "feat", "feat");
+    const f = join(d, "..", `${d.split("/").pop()}-msg.txt`);
+    writeFileSync(f, "Merge feat: T-001 \"quoted\" `title` $(nope)\n");
+    const r = cli(d, "feat", "positional", "--message-file", f);
+    expect(r.code).toBe(0);
+    expect(r.json.result).toBe("merged");
+    expect(g(d, "log", "-1", "--format=%s", "main")).toBe("Merge feat: T-001 \"quoted\" `title` $(nope)");
+  });
+
+  test("--message-file alone (no positional) merges; unreadable file is an error 1", () => {
+    const d = repo();
+    edit(d, "feat", "feat");
+    const missing = cli(d, "feat", "--message-file", join(d, "no-such-file.txt"));
+    expect(missing.code).toBe(1);
+    expect(missing.json.result).toBe("error");
+    const f = join(d, "..", `${d.split("/").pop()}-msg2.txt`);
+    writeFileSync(f, "from file\n");
+    const r = cli(d, "feat", "--message-file", f);
+    expect(r.code).toBe(0);
+    expect(g(d, "log", "-1", "--format=%s", "main")).toBe("from file");
+  });
 });

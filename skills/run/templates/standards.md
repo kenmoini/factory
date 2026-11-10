@@ -12,6 +12,7 @@ The labels on this note are authoritative; this table mirrors them.
 | testCmd | `{{test_cmd}}` |
 | buildCmd | `{{build_cmd}}` |
 | ciPlatform | `{{ci_platform}}` |
+| postMergeSmoke | `{{post_merge_smoke}}` (opt-in: `true` runs testCmd on the default branch after each task merge) |
 
 ## Runtimes and versions
 {{runtimes}}

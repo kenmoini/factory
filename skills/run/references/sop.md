@@ -26,18 +26,20 @@ agent dispatch rules in `$PLUGIN_ROOT/skills/run/references/agent-protocol.md`.
 
 - The only source is the `Standards` note labels `#lintCmd`, `#testCmd`, `#buildCmd` (read with `get_attributes`).
 - Enforce-standards runs them after scaffolding; the builder receives them in its brief and runs them in the
-  worktree before reporting; MERGE runs `#testCmd` on `main` as the post-merge smoke.
+  worktree before reporting; MERGE runs `#testCmd` on `<main>` as a post-merge smoke only when the Standards
+  opt in with `#postMergeSmoke=true` (default off).
 - Empty label = no such command; say "none" in briefs. Never invent a command; ask the user and update the label.
 
 ### 4. Commits and branches
 
-- Your only commits on `main` are the two scaffolding commits: `chore: ignore factory working files` (setup's
-  `.gitignore`) and `chore: enforce standards` (after `#approval=approved`).
+- `<main>` is the default branch (`main`, else `master`; schema Placeholders). Your only commits on `<main>` are the
+  two scaffolding commits: `chore: ignore factory working files` (setup's `.gitignore`) and `chore: enforce
+  standards` (after `#approval=approved`).
 - Builders commit only on branch `<slug>` inside `<repoPath>/.factory/worktrees/<slug>`; the api-design stage commits
-  its repo API docs there too (`docs(api): <slug>`). Nobody else commits on `main`.
-- `main` changes only through `factory-merge <repoPath> <slug> "<message>"` (`git merge --no-ff`), except those two
-  scaffolding commits; never push, never open a PR.
-- Never rebase, reset or force anything on `main`; refuse and report if `main` is dirty.
+  its repo API docs there too (`docs(api): <slug>`). Nobody else commits on `<main>`.
+- `<main>` changes only through `factory-merge <repoPath> <slug> --message-file <file>` (`git merge --no-ff`), except
+  those two scaffolding commits; never push, never open a PR.
+- Never rebase, reset or force anything on `<main>`; refuse and report if `<main>` is dirty.
 
 ### 5. Graph first
 

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ForeignBranchError, ensureWorktree, removeWorktree, validateSlug, worktreePath } from "../../lib/worktree";
 import { git } from "../../lib/git";
-import { readRepoConfig } from "../../lib/config";
+import { readRepoConfig, writeRepoConfig } from "../../lib/config";
 
 async function makeRepo(): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), "factory-wt-"));
@@ -32,7 +32,9 @@ describe("ensureWorktree", () => {
     const a = await ensureWorktree(repo, "demo");
     expect(a).toEqual({ path: worktreePath(repo, "demo"), branch: "demo", created: true, branchCreated: true });
     expect((await git(a.path, "rev-parse", "--abbrev-ref", "HEAD")).out).toBe("demo");
-    expect(readRepoConfig(repo)?.workstreams.demo).toEqual({ noteId: "", branch: "demo", worktree: ".factory/worktrees/demo" });
+    const entry = readRepoConfig(repo)?.workstreams.demo;
+    expect(entry).toEqual({ branch: "demo", worktree: ".factory/worktrees/demo" });
+    expect(entry && "noteId" in entry).toBe(false); // unknown note id: key omitted, so `factory-config get` misses
 
     const b = await ensureWorktree(repo, "demo");
     expect(b.created).toBe(false);
@@ -43,6 +45,16 @@ describe("ensureWorktree", () => {
     expect(c.created).toBe(true);
     expect(c.branchCreated).toBe(false);
     expect(existsSync(c.path)).toBe(true);
+  });
+
+  test("keeps a cached noteId on re-ensure", async () => {
+    const repo = await makeRepo();
+    await ensureWorktree(repo, "demo");
+    const cfg = readRepoConfig(repo)!;
+    cfg.workstreams.demo.noteId = "n42";
+    writeRepoConfig(repo, cfg);
+    await ensureWorktree(repo, "demo");
+    expect(readRepoConfig(repo)?.workstreams.demo).toEqual({ noteId: "n42", branch: "demo", worktree: ".factory/worktrees/demo" });
   });
 
   test("refuses foreign branch unless adopt", async () => {
@@ -85,5 +97,36 @@ describe("removeWorktree", () => {
     expect((await git(repo, "worktree", "add", "--force", extra, "demo")).code).toBe(0);
     await expect(removeWorktree(repo, "demo", { deleteBranch: true })).rejects.toThrow("git branch -D failed");
     expect(readRepoConfig(repo)?.workstreams.demo).toBeDefined();
+  });
+});
+
+describe("bin/factory-worktree exit codes", () => {
+  const BIN = join(import.meta.dir, "../../bin/factory-worktree");
+  const cli = (...args: string[]) => {
+    const p = Bun.spawnSync([BIN, ...args], { stdout: "pipe", stderr: "pipe" });
+    const out = p.stdout.toString().trim();
+    return { code: p.exitCode, json: out ? JSON.parse(out) : null };
+  };
+
+  test("ensure 0", async () => {
+    const repo = await makeRepo();
+    const r = cli("ensure", "demo", "--repo", repo);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ path: worktreePath(repo, "demo"), branch: "demo", created: true, branchCreated: true });
+  });
+
+  test("foreign branch 2", async () => {
+    const repo = await makeRepo();
+    await git(repo, "branch", "other");
+    const r = cli("ensure", "other", "--repo", repo);
+    expect(r.code).toBe(2);
+    expect(r.json.error).toContain("not a factory workstream");
+  });
+
+  test("invalid slug 3", async () => {
+    const repo = await makeRepo();
+    const r = cli("ensure", "Bad Slug", "--repo", repo);
+    expect(r.code).toBe(3);
+    expect(r.json.error).toContain("invalid slug");
   });
 });

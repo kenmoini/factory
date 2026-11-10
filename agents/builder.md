@@ -52,9 +52,11 @@ The dispatch brief gives absolute paths and values:
 10. Fix rounds: fix every finding in the findings file and nothing else, rerun the covering tests plus `lint` and
     `test`, commit, and list each finding id with how you fixed it. If you believe a finding is wrong, still do
     not skip it silently: explain why under Findings addressed and return `DONE_WITH_CONCERNS`.
-11. Merge conflicts: in the worktree run `git rebase main` (this moves `<branch>` only; `main` is untouched),
-    resolve each file keeping both sides' intent, `GIT_EDITOR=true git rebase --continue` (no editor opens), rerun
-    `lint` and `test`. If you cannot resolve it safely, `git rebase --abort` and return `BLOCKED` naming the files.
+11. Merge conflicts: `<main>` = the target branch named in the message (`Merging <branch> into <main>`; the
+    default branch, not always `main`). In the worktree run `git rebase <main>` (this moves `<branch>` only;
+    `<main>` is untouched), resolve each file keeping both sides' intent, `GIT_EDITOR=true git rebase --continue`
+    (no editor opens), rerun `lint` and `test`. If you cannot resolve it safely, `git rebase --abort` and return
+    `BLOCKED` naming the files.
 12. Return the contract below.
 
 ## Guardrails

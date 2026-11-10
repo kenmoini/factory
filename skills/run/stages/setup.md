@@ -85,15 +85,21 @@ nothing is read from Trilium before step 9.
    - Checks: dirs `<repoPath>/.factory/{worktrees,mockups,tasks,workstreams}`; `<repoPath>/.gitignore` lines
      `.factory/` and `graphify-out/` (`grep -qxF`); hooks: `<hooksDir>` = output of
      `git -C "<repoPath>" rev-parse --path-format=absolute --git-path hooks` (right for linked worktrees, submodules
-     and `core.hooksPath`), present = `grep -q graphify "<hooksDir>/post-commit"` (not `graphify.gitHooks`).
-   - Missing → tell the user the list (dirs; `.gitignore` lines + the commit below if it applies; Graphify git hooks
-     in `<hooksDir>`, which rebuild `graphify-out/` after commits); AskUserQuestion `Apply / Stop setup`.
+     and `core.hooksPath`), present = `grep -q graphify "<hooksDir>/post-commit"` (not `graphify.gitHooks`); the repo
+     has a commit (`git -C "<repoPath>" rev-parse -q --verify HEAD` succeeds; preflight `git.hasCommits`).
+   - Missing → tell the user the list (dirs; `.gitignore` lines + the commit below if it applies, naming it the
+     repo's first commit when there is none; Graphify git hooks in `<hooksDir>`, which rebuild `graphify-out/` after
+     commits); AskUserQuestion `Apply / Stop setup`.
    - Dirs: `mkdir -p "<repoPath>/.factory/worktrees" "<repoPath>/.factory/mockups" "<repoPath>/.factory/tasks" "<repoPath>/.factory/workstreams"`.
    - `.gitignore`: note whether `git -C "<repoPath>" status --porcelain -- .gitignore` is empty, then
      `f="<repoPath>/.gitignore"; touch "$f"; for e in .factory/ graphify-out/; do grep -qxF "$e" "$f" || { [ -n "$(tail -c1 "$f")" ] && echo >> "$f"; echo "$e" >> "$f"; }; done`.
-     Commit only if lines were added, it was empty before, `git.hasCommits=true` and
-     `git -C "<repoPath>" branch --show-current` is the default branch (`main`, else `master`):
-     `git -C "<repoPath>" add .gitignore && git -C "<repoPath>" commit -m "chore: ignore factory working files" -- .gitignore`.
+     Commit = `git -C "<repoPath>" add .gitignore && git -C "<repoPath>" commit -m "chore: ignore factory working files" -- .gitignore`
+     (stages and commits only `.gitignore`). Make it when either:
+     - the repo has no commits (`rev-parse -q --verify HEAD` fails): it becomes the FIRST commit, on the unborn
+       branch (`git -C "<repoPath>" branch --show-current`; `main` after step 6), which is then the default branch
+       `<main>`. Made even when no line was added: brainstorm cannot branch a worktree from an empty repo; or
+     - lines were added, it was empty before, and `git -C "<repoPath>" branch --show-current` is the default branch
+       (`main`, else `master`).
      Otherwise leave it uncommitted; say so in the summary.
    - Hooks: `cd "<repoPath>" && graphify hook install`; re-check with the same grep. Still absent (e.g. husky owns
      `core.hooksPath`) → warn once that the graph refreshes only via SOP 5's stale check and continue: hooks never

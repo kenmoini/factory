@@ -79,7 +79,8 @@ write follows `$PLUGIN_ROOT/skills/run/references/trilium-schema.md` (find or cr
    Take the brownfield choice detected in `Codebase Examination` (label `(current)`) and the research
    recommendation for the row's research area (label `(recommended)`; with the version it verified, none when
    `version` is ""). Each one that matches a listed option: add its label to that option. Each one that does not:
-   it replaces the last listed option that has no label. Order: `(current)` first, then `(recommended)`, then the
+   with fewer than four options listed it is added as a new option; only when four are listed does it replace the
+   last listed option that has no label (Q7 keeps `Stop`). Order: `(current)` first, then `(recommended)`, then the
    rest; one choice that is both gets `(current, recommended)`. Any other answer comes via Other.
 
    | Q | Area → Standards section (research area) | Listed options |
@@ -88,7 +89,7 @@ write follows `$PLUGIN_ROOT/skills/run/references/trilium-schema.md` (find or cr
    | 2 | API documentation → `api_docs` (`api-docs`) | `OpenAPI 3.1 (docs/openapi.yaml)`, `No API`, `GraphQL SDL or .proto files`, `AsyncAPI 3` |
    | 3 | CI platform → `pipelines` (`ci`) | `Makefile + GitHub Actions (default)`, `None yet`, `Makefile only, no hosted CI`, `Makefile + GitLab CI` |
    | 4 | Build artifacts, multiSelect → `artifacts` (`artifacts`) | `Container image (Containerfile)`, `Standalone binary`, `Package for a registry`, `Helm chart` (none: via Other) |
-   | 5 | Pipelines, multiSelect → `pipelines`, `dependencies` (`pipelines`) | `PR checks: lint, test, build`, `Dependency updates (<Dependabot or Renovate, per research>)`, `Release on tag`, `Publish image or chart to a registry` |
+   | 5 | Pipelines, multiSelect → `pipelines`, `dependencies` (`pipelines`); the question also offers, via Other, the opt-in post-merge smoke ("run `#testCmd` on `<main>` after each task merge"; off by default) | `PR checks: lint, test, build`, `Dependency updates (<Dependabot or Renovate, per research>)`, `Release on tag`, `Publish image or chart to a registry` |
    | 6 | Public docs → `public_docs` (`public-docs`) | `Markdown in docs/ (no site)`, `None`, `Docusaurus`, `MkDocs Material` |
    | 7 | Other traits, free text → `other` (`other`) | `Nothing else` / `Stop`; via Other: code style, commit convention, licence, branching, security tooling, coverage |
 
@@ -100,17 +101,19 @@ write follows `$PLUGIN_ROOT/skills/run/references/trilium-schema.md` (find or cr
      e.g. `npm run lint`), never `make …`. No tool named, or the user said "none yet" → empty string. Never
      invent a command (SOP 3). `#lintCmd`, `#testCmd`, `#buildCmd` get these tool commands; when Q3 includes a
      Makefile, enforce-standards re-points them to `make lint|test|build` after it has committed those targets.
+   - `postMergeSmoke`: `true` only when the user opted in (Q5 or Q7 via Other); else `false` (the default: builders
+     already run the tests in the worktree, and `<main>` may lack installed dependencies).
 5. **Draft `Standards`**: Read template `standards.md`, fill every `{{placeholder}}` (`n/a` when not applicable),
    keep lines 1–2, Write `<repoPath>/.factory/research/draft-standards.md`. Fill: `repo_name`; `approved_at` =
-   `pending`; `research_report_path`; `lint_cmd`, `test_cmd`, `build_cmd`, `ci_platform` = the step 4 values
-   (`none` in the body when empty); one section per area from the answers, with exact tool names, versions and
+   `pending`; `research_report_path`; `lint_cmd`, `test_cmd`, `build_cmd`, `ci_platform`, `post_merge_smoke` = the
+   step 4 values (`none` in the body when empty); one section per area from the answers, with exact tool names, versions and
    file paths; `style` ends with the line `lint: <tool command or none>`, `testing` with `test: <…>`, `artifacts`
    with `build: <…>` (the source enforce-standards uses for Makefile targets); `pipelines` states whether a local
    `Makefile` with targets lint, test, build is wanted (Q3); `dependencies` = the update tool and cadence from Q5;
    `other` = Q7; `decision_rows` = one row per area
    `| <area> | <choice> | <version or –> | <why> | <other options offered> |`.
 6. **Approve the Standards** (human gate). From the draft, print at most 200 words: area → choice and version, the
-   four machine values (with a Makefile: "enforce-standards will point the commands at `make` targets") and the
+   machine values (with a Makefile: "enforce-standards will point the commands at `make` targets") and the
    draft path. AskUserQuestion "Approve these Standards?" — options `Approve` / `Edit (tell me what to change)` /
    `Stop`.
    - `Approve`, in this order:
@@ -119,7 +122,8 @@ write follows `$PLUGIN_ROOT/skills/run/references/trilium-schema.md` (find or cr
      exact title `Standards`: found → `mcp__trilium__set_note_content(<standardsNoteId>, <draft content>)`; absent →
      `mcp__trilium__create_note` (parent `<projectNoteId>`, title `Standards`, type `text`, the draft content); then
      one `mcp__trilium__set_attribute` each: `#factoryDoc=standards`, `#project=<repoName>`, `#approval=approved`,
-     `#lintCmd=<lint>`, `#testCmd=<test>`, `#buildCmd=<build>`, `#ciPlatform=<ciPlatform>` (empty values allowed);
+     `#lintCmd=<lint>`, `#testCmd=<test>`, `#buildCmd=<build>`, `#ciPlatform=<ciPlatform>` (empty values allowed),
+     `#postMergeSmoke=<postMergeSmoke>`;
      export kind `standards`; go to Completion.
    - `Edit` → the change is the Other text (option picked without text → free-text question "What should change?",
      options `Nothing, ask again` / `Stop`); rewrite the draft (and the step 4 values it changes), print the summary
@@ -132,7 +136,7 @@ write follows `$PLUGIN_ROOT/skills/run/references/trilium-schema.md` (find or cr
 2. `mcp__trilium__append_to_note(<Factory Log>,`
    `"- <ISO ts> [set-standards] stage done — ci <ciPlatform>, lint <lintCmd|none>, test <testCmd|none>, build <buildCmd|none>")`.
 3. `factory-event stage --stage set-standards --status done </dev/null`.
-4. Print one paragraph: the Standards note id, the four machine values, the export
+4. Print one paragraph: the Standards note id, the machine values, the export
    `<repoPath>/.factory/docs/standards.md`; next stage: enforce-standards.
 
 Exports: project documents live at `<repoPath>/.factory/docs/<kind>.md`, written only from approved notes;
@@ -144,7 +148,7 @@ refreshes those copies whenever an approved document changes.
 `/factory:set-standards` or `/factory:run set-standards` when `#stageStandards=done`: AskUserQuestion
 "set-standards is already done (Standards <standardsNoteId>). Run it again?" — options
 `Re-run (overwrite the document, keep labels)` / `Stop`.
-- `Stop` → no writes; `factory-event stage --stage set-standards --status done </dev/null`; stop.
+- `Stop` → no writes; `factory-event stage --stage set-standards --status stopped </dev/null`; stop.
 - `Re-run` → steps 1–6 and Completion. Until `Approve`, the approved `Standards`, its labels and the exports stay
   as they are (a `Stop` changes none of them); on `Approve` the note is overwritten in place (same note id) and its
   machine labels get the new tool commands. `#stageStandards` stays `done` throughout. When `#stageEnforce` is set,

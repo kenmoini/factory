@@ -35,8 +35,7 @@ live `factory-config get activeWorkstream --repo "<repoPath>"` (never the prefli
 2. `mcp__trilium__get_attributes(<ws>)` shows `#stageBrainstorm=done`, and `#stageUiux` and `#stageApi` each `done` or
    `skipped`. Else refuse with the first missing one, e.g. `Missing #stageUiux=done|skipped on workstream <slug>: run
    /factory:uiux first.`, and stop. `<planRev>` = its `#planRev`.
-3. `factory-event stage --stage plan --status started --workstream <slug> </dev/null`.
-4. `#stagePlan=done`, not entered from the validate stage's `Fix the plan now` → Direct-command behaviour below
+3. `#stagePlan=done`, not entered from the validate stage's `Fix the plan now` → Direct-command behaviour below
    before step 1.
 
 ## Procedure

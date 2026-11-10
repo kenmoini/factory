@@ -25,6 +25,8 @@ Every write follows `$PLUGIN_ROOT/skills/run/references/trilium-schema.md` (find
    `Missing #stageEnforce=done on project <repoName>: run /factory:enforce-standards first.` and stop.
 2. Preflight `tools.superpowers=true`. Else refuse `The superpowers plugin is missing: run /plugin install
    superpowers@claude-plugins-official, then /factory:brainstorm.` and stop.
+3. `git -C "<repoPath>" rev-parse -q --verify HEAD` succeeds (`factory-worktree ensure` branches from a commit). Else
+   refuse `<main> has no commits: run /factory:setup.` (`<main>` written out, schema Placeholders) and stop.
 
 ## Procedure
 
@@ -50,7 +52,6 @@ Every write follows `$PLUGIN_ROOT/skills/run/references/trilium-schema.md` (find
      - Exit 2 (branch `<slug>` exists, not made by the factory) → AskUserQuestion
        `Adopt existing branch <slug> / Choose another slug / Stop`; Adopt → rerun with `--adopt`.
      - Exit 3 → show its `error`; back to the slug question. Exit 1 → show `error`; Stop brainstorm.
-   - `factory-event stage --stage brainstorm --status started --workstream <slug> </dev/null`.
 2. **Overview.** Free-text question "In a few sentences, what is this workstream?" options
    `Let the brainstorm ask me` / `Stop`. `Let the brainstorm ask me` → overview text `n/a — settled in brainstorming`.
 3. **Trilium notes.** Write in this order:

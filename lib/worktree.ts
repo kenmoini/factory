@@ -61,7 +61,8 @@ export async function ensureWorktree(
   }
 
   cfg.workstreams = cfg.workstreams ?? {};
-  cfg.workstreams[slug] = { noteId: existing?.noteId ?? "", branch: slug, worktree: `.factory/worktrees/${slug}` };
+  // noteId only when known: an empty value would read as a hit, so `factory-config get` must miss instead.
+  cfg.workstreams[slug] = { ...(existing?.noteId ? { noteId: existing.noteId } : {}), branch: slug, worktree: `.factory/worktrees/${slug}` };
   writeRepoConfig(repoDir, cfg);
   return { path, branch: slug, created, branchCreated };
 }
