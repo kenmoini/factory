@@ -20,6 +20,7 @@ const formatOf = (n: Pick<EtapiNote, "type" | "mime">): "html" | "markdown" =>
 export function createApi(ctx: Ctx) {
   const { deps, pollers } = ctx;
   const startedAt = Date.now();
+  let lastLogged = "";
 
   const withWorkstreams = (e: RepoEntry) => ({ ...e, workstreams: Object.entries(e.workstreams).map(([slug, w]) => ({ slug, noteId: w.noteId })) });
 
@@ -29,10 +30,18 @@ export function createApi(ctx: Ctx) {
   }
 
   const health: Handler = () => {
-    let error: string | undefined;
-    for (const p of pollers.values()) { error = p.lastError() ?? undefined; if (error) break; }
-    const trilium: { ok: boolean; url: string; error?: string } = { ok: !error, url: deps.config.triliumUrl };
-    if (error) trilium.error = error;
+    let raw: string | undefined;
+    for (const p of pollers.values()) { raw = p.lastError() ?? undefined; if (raw) break; }
+    const trilium: { ok: boolean; url: string; error?: string } = { ok: !raw, url: deps.config.triliumUrl };
+    if (raw) {
+      if (raw !== lastLogged) { lastLogged = raw; console.error(`factory-dashboard: trilium poll error: ${raw}`); }
+      const status = raw.match(/-> (\d{3})/)?.[1];
+      trilium.error = status ? `trilium returned ${status}` : "trilium unreachable";
+    } else if (pollers.size > 0 && [...pollers.values()].every((p) => !p.snapshot())) {
+      // registered repos but nothing fetched yet; with no repos at all ok:true is acceptable (nothing to poll)
+      trilium.ok = false;
+      trilium.error = "no poller has refreshed yet";
+    }
     return json({ ok: true, pid: process.pid, uptimeSec: Math.round((Date.now() - startedAt) / 1000), version: "0.1.0", trilium, repos: deps.repos.list().map((r) => r.repoPath) });
   };
 
@@ -54,7 +63,10 @@ export function createApi(ctx: Ctx) {
     if (ws && ws !== poller.snapshot()?.workstream?.slug) await poller.selectWorkstream(ws);
     else if (!poller.snapshot()) await poller.refresh();
     const snap = poller.snapshot();
-    return snap ? json(snap) : json({ error: poller.lastError() ?? "no snapshot yet" }, 503);
+    const err = poller.lastError();
+    if (err) console.error(`factory-dashboard: poll error: ${err}`);
+    if (ws && snap && snap.workstream?.slug !== ws) return json({ error: "unknown workstream" }, 404);
+    return snap ? json(snap) : json({ error: "no snapshot yet" }, 503);
   };
 
   function findDoc(id: string) {
@@ -85,7 +97,8 @@ export function createApi(ctx: Ctx) {
 
   function upstreamError(e: unknown): Response {
     if (e instanceof TriliumError && e.status === 404) return json({ error: "not found" }, 404);
-    return json({ error: e instanceof Error ? e.message : String(e) }, 502);
+    console.error(`factory-dashboard: upstream error: ${e instanceof Error ? e.message : String(e)}`);
+    return json({ error: "upstream error", status: e instanceof TriliumError ? e.status : undefined }, 502);
   }
 
   const task: Handler = async (_req, _url, [id]) => {
@@ -174,7 +187,8 @@ export function createApi(ctx: Ctx) {
     try {
       return await m.handler(req, url, m.params);
     } catch (e) {
-      return json({ error: e instanceof Error ? e.message : String(e) }, 500);
+      console.error(`factory-dashboard: internal error: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
+      return json({ error: "internal error" }, 500);
     }
   }
 

@@ -37,6 +37,9 @@ describe("dashboard server", () => {
   test("health, repos, state, docs, tasks", async () => {
     const { app, base } = boot(fake, "good");
     expect(app.addRepo(repoDir)).not.toBeNull();
+    const cold: any = await (await fetch(`${base}/api/health`)).json();
+    expect(cold.trilium).toMatchObject({ ok: false, error: "no poller has refreshed yet" });
+    await Promise.all([...app.pollers.values()].map((p) => p.refresh()));
     const health: any = await (await fetch(`${base}/api/health`)).json();
     expect(health.ok).toBe(true);
     expect(health.trilium.ok).toBe(true);
@@ -53,6 +56,9 @@ describe("dashboard server", () => {
     expect(columnFor(snap.tasks.find((t) => t.id === "t002")!)).toBe("reviewers");
     expect((await fetch(`${base}/api/state?repo=nope`)).status).toBe(404);
     expect((await fetch(`${base}/api/state?repo=${app.pollers.size ? repoDir.split("/").pop() : ""}`)).status).toBe(200);
+
+    expect((await fetch(`${base}/api/state?repo=${encodeURIComponent(repoDir)}&ws=nope`)).status).toBe(404);
+    expect(((await (await fetch(`${base}/api/state?repo=${encodeURIComponent(repoDir)}&ws=nope`)).json()) as any).error).toBe("unknown workstream");
 
     const d1 = await fetch(`${base}/api/docs/d2`);
     expect(d1.status).toBe(200);
@@ -86,7 +92,7 @@ describe("dashboard server", () => {
     expect(res.status).toBe(200);
     const h: any = await res.json();
     expect(h.trilium.ok).toBe(false);
-    expect(h.trilium.error).toContain("401");
+    expect(h.trilium.error).toBe("trilium returned 401");
     expect(JSON.stringify(h)).not.toContain("bad");
   });
 
