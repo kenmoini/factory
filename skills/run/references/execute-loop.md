@@ -48,19 +48,19 @@ The state machine run by the `execute` stage, one task at a time. Labels, titles
 
 - Rewrite the whole file (Write) at every transition, before the new phase's first action. `task` is `null` in SELECT
   before a pick and after FINISH (`phase: "DONE"`). `round`/`base`/`head`/`agents.builder` mirror `#round`, `#base`,
-  `#head`, `#builderAgentId`. `prevHead` exists only here: the head the previous review saw, i.e. the start of the next
-  scoped diff (`""` when none; a lost value falls back to `#base`, a larger but correct diff).
+  `#head`, `#builderAgentId`. `prevHead` is ledger-only: the head the previous review saw, start of the next scoped
+  diff (`""` = none; if lost, use `#base`).
 - Trilium wins: on start or after compaction, if the ledger disagrees with the task labels, rebuild it from them:
 
 | task `#status` | resume at |
 |---|---|
 | `spec` | SPEC step 1 |
-| `building` | keep `#base`. `state.agents.builder` set → `SendMessage(to: <state.agents.builder>, "[task:<tn>] Continue from your report <taskDir>/report.md and finish the task. Return the same contract.")`, then BUILD step 5; else fresh dispatch from BUILD step 3 (step 2 first if `report.md` is missing) |
+| `building` | keep `#base`. `state.agents.builder` set → `SendMessage(to: <state.agents.builder>, "[task:<tn>] Continue from your report <taskDir>/report.md and finish the task. Return the same contract.")`, then BUILD step 5. No id, or SendMessage errors (agent gone) → fresh builder: BUILD step 3 prompt with `Task: Continue <T> <title> from your report <taskDir>/report.md [task:<tn>]` (step 2 first if `report.md` is missing), then steps 4–5 |
 | `reviewing` | REVIEW, resume branch of step 1 |
 | `fixing` | FIX, same `#round` |
 | `approving` | APPROVE |
 | `merging` | MERGE step 2 |
-| `blocked` | MERGE step 2; a new conflict continues with `k` = highest existing `conflict-<k>.txt` + 1 |
+| `blocked` | MERGE conflict sub-flow, Resume (never `factory-merge` first) |
 | `needs-human` | NEEDS-HUMAN step 2 (report again, stop) |
 
 ## Task files (`<taskDir>/`)
@@ -73,16 +73,16 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
 
 | State | Action | Trilium | Next |
 |---|---|---|---|
-| SELECT | resume in-flight task, else next `todo` (deps done); none → FINISH | `#wsStatus=executing` | SPEC; paused → ask first |
-| SPEC | export task + plan constraints + Standards + docs to `<taskDir>/brief.md`; spawn spec-writer | `#status=spec`; Agent Run; `Task Spec` note | BUILD; NEEDS_CONTEXT → answer (or ask user) → SendMessage; BLOCKED twice → NEEDS-HUMAN(spec-failed) |
-| BUILD | `#base`=HEAD(branch); spawn builder (worktree, spec, report path, lint/test cmds) | `#status=building #round=0 #builderAgentId` | DONE → REVIEW; NEEDS_CONTEXT → SendMessage; BLOCKED or no commit → NEEDS-HUMAN(builder-blocked) |
-| REVIEW | `round+=1`; `factory-review-package`; one message, four Agent calls; wait for all | `#status=reviewing #round #head`; 4 Review notes + runs | all PASS → APPROVE; CHANGES ∧ n − h ≤ 2 → FIX; CHANGES ∧ n − h = 3 → NEEDS-HUMAN(fix-cap) (h = round of the last human reject, else 0); reviewer error twice → NEEDS-HUMAN(reviewer-failed) |
-| FIX | `SendMessage(builder, critical+important findings)`; agent gone → fresh builder | `#status=fixing`; append Build Report | REVIEW (scoped `state.prevHead`..new head); BLOCKED or no new commit → NEEDS-HUMAN(builder-blocked) |
-| APPROVE | spawn approver (spec, report, full package, 4 review JSONs, Standards) | `#status=approving`; Approval note | APPROVE → MERGE; ESCALATE → NEEDS-HUMAN(approver) |
-| MERGE | `factory-merge`; `#testCmd` smoke on main | `#status=merging` | merged → DONE (smoke fail → DONE + `#wsStatus=paused`, stop); conflict → `#status=blocked #escalation=merge-conflict` sub-flow |
-| DONE | graph refresh; milestone check | `#status=done #mergedSha`; log | SELECT |
-| NEEDS-HUMAN | report, stop | `#status=needs-human #escalation`; `#wsStatus=paused` | approve → MERGE; reject → FIX (SPEC for spec-failed); the round counter continues |
-| FINISH | all tasks done | `#wsStatus=done #stageExecute=done` | offer `factory-worktree remove` |
+| SELECT | in-flight task, else next ready `todo` | `#wsStatus=executing` | SPEC; none → FINISH; paused → ask |
+| SPEC | `brief.md`; spec-writer | `#status=spec`; `Task Spec` | BUILD; BLOCKED twice → NEEDS-HUMAN(spec-failed) |
+| BUILD | `#base`; builder | `#status=building #round=0 #builderAgentId` | REVIEW; BLOCKED / no commit → NEEDS-HUMAN(builder-blocked) |
+| REVIEW | round + 1; package; four reviewers in one message | `#status=reviewing #round #head`; Review notes | all PASS → APPROVE; CHANGES: n − h ≤ 2 → FIX, n − h ≥ 3 → NEEDS-HUMAN(fix-cap); reviewer fails twice → NEEDS-HUMAN(reviewer-failed) |
+| FIX | findings → builder | `#status=fixing`; Build Report | REVIEW (scoped); BLOCKED / no commit → NEEDS-HUMAN(builder-blocked) |
+| APPROVE | full package; approver | `#status=approving`; Approval | MERGE; ESCALATE → NEEDS-HUMAN(approver) |
+| MERGE | `factory-merge`; smoke | `#status=merging` | DONE (smoke fail: also `#wsStatus=paused`, stop); conflict → sub-flow (`#status=blocked`) |
+| DONE | graph; milestone | `#status=done #mergedSha` | SELECT |
+| NEEDS-HUMAN | report, stop | `#status=needs-human #escalation`; `#wsStatus=paused` | approve → MERGE (refused for spec-failed); reject → FIX (spec-failed: SPEC) |
+| FINISH | all done | `#wsStatus=done #stageExecute=done` | offer `factory-worktree remove` |
 
 ## SELECT
 
@@ -150,9 +150,9 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
    `factory-review-package <wt> <from> <#head> --out <taskDir>/review-R<n>.diff` with `<from>` = `state.prevHead` when
    non-empty (scoped), else `#base`. Prints `{path, commits, filesChanged}`; non-zero exit → report `error`, stop.
 3. `open=`: `<taskDir>/open-findings-R<n-1>-human.json` if it exists, else `<taskDir>/open-findings-R<n-1>.json` if it
-   exists, else omit. run-start per reviewer, then ONE assistant message with the Agent calls (`factory:security-reviewer`,
-   `factory:ux-reviewer`, `factory:ui-design-reviewer`, `factory:code-reviewer`), `run_in_background: false`,
-   descriptions `<agent> <T> R<n> [task:<tn>]`. Wait for all. Prompt (Inputs per agent from the protocol table):
+   exists, else omit. run-start per reviewer, then ONE assistant message with the Agent calls (`factory:` + `security-reviewer`,
+   `ux-reviewer`, `ui-design-reviewer`, `code-reviewer`), `run_in_background: false`, descriptions
+   `<agent> <T> R<n> [task:<tn>]`. Wait for all. Prompt (Inputs per agent from the protocol table):
    ```
    Task: <Security|UX|UI design|Code> review of <T> round <n> [task:<tn>]
    Read first: <taskDir>/review-R<n>.diff
@@ -209,8 +209,8 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
      user and stop (never auto-revert; SELECT step 2 asks before continuing).
    - `{"result":"up-to-date"}` → DONE(`git -C <repoPath> rev-parse HEAD`).
    - `{"result":"conflict","files"}` → conflict sub-flow.
-   - `{"result":"dirty","files"}` → `main` has uncommitted changes: touch nothing, show the files, stop (status stays `merging`).
-   - `{"result":"error","message"}` → report, stop (status stays `merging`).
+   - `{"result":"dirty","files"}` (uncommitted changes on `main`: touch nothing, show them) or `{"result":"error","message"}`
+     → report, stop (status stays `merging`).
 3. Conflict sub-flow:
    1. `k` = highest existing `<taskDir>/conflict-<k>.txt` + 1 (1 if none); `k > 2` → NEEDS-HUMAN(`merge-conflict`).
       `set_attribute(<tn>, status=blocked, escalation=merge-conflict)`;
@@ -242,7 +242,12 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
       <taskDir>/report.md. Return the same contract.")`; run-end; result as in step 3; head → `set_attribute(<tn>, head=<head>)`;
       `factory-review-package <wt> <state.prevHead> <#head> --out <taskDir>/conflict-<k>-r2.diff`; run-start(code-reviewer);
       step 5 prompt with `Read first: <taskDir>/conflict-<k>-r2.diff` and `open=<taskDir>/conflict-<k>-findings.json`;
-      run-end; append to the Build Report. PASS → step 6; CHANGES → NEEDS-HUMAN(`merge-conflict`).
+      write `<taskDir>/conflict-<k>-r2-review.json`; run-end; append to the Build Report. PASS → step 6; CHANGES →
+      NEEDS-HUMAN(`merge-conflict`).
+   8. Resume (`blocked`): `k` = highest existing `conflict-<k>.txt` (no increment). `conflict-<k>-review.json` PASS, or
+      `conflict-<k>-r2-review.json` PASS → step 6. Review CHANGES and r2 CHANGES → NEEDS-HUMAN(`merge-conflict`). Review
+      CHANGES, no r2 → step 7 (skip its SendMessage when head differs from a non-empty `state.prevHead`). No review: head
+      equals a non-empty `state.prevHead` → step 2 (builder not done); else → step 4. `factory-merge` runs only from step 6.
 
 ## DONE
 
@@ -258,7 +263,7 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
 2. Tell the user what is needed: `fix-cap` → consolidate round `n` as in FIX step 2 and show `<taskDir>/findings-R<n>.md`;
    `approver` → the Approval reasons; `builder-blocked` → the builder's concerns; `spec-failed` → the spec-writer's reason;
    `merge-conflict` → the conflict files and last review; `reviewer-failed` → which reviewer. Offer
-   `/factory:run approve <T>` and `/factory:run reject <T> "notes"`. Stop the loop.
+   `/factory:run approve <T>` (not for `spec-failed`) and `/factory:run reject <T> "notes"`. Stop the loop.
 
 ## Human approve (`run approve <T>`)
 
@@ -270,15 +275,17 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
 
 ## Human reject (`run reject <T> "notes"`)
 
-1. Same lookup and `needs-human` check; remember `#escalation`.
+1. Same lookup and `needs-human` check; `<esc>` = the current `#escalation` value (read before anything is deleted).
 2. `Human Decision` as in approve step 2 with the notes in the section, then `set_attribute(<decision>, verdict=reject, round=<#round>)`.
-3. `delete_attribute(<tn>, escalation)`; `set_attribute(<ws>, wsStatus=executing)`; log `human reject`.
-4. Was `spec-failed` → add the notes to `<taskDir>/brief.md` under `## Human notes`; ledger phase SPEC → SPEC.
-5. Otherwise `n = #round` (never reset). Write `<taskDir>/findings-R<n>-human.md` (the notes as finding `HUMAN-1`,
-   `important`) and `<taskDir>/open-findings-R<n>-human.json` =
-   `[{"reviewer": "code", "id": "HUMAN-1", "severity": "important", "file": "", "line": null, "summary": <notes as JSON string>, "fix": <notes as JSON string>}]`
-   so the next code review marks it `ADDRESSED`/`NOT_ADDRESSED`. Ledger round `n`, phase FIX → FIX (section
-   `Round <n> (human reject)`), then REVIEW round `n + 1`.
+3. `<esc>` = `spec-failed` → add the notes to `<taskDir>/brief.md` under `## Human notes`; next = SPEC.
+   Otherwise `n = #round` (never reset). If `open-findings-R<n>.json` is missing but `review-R<n>-*.json` exist, build it
+   first (FIX step 2 rule). Write `<taskDir>/open-findings-R<n>-human.json` = its entries (if any) plus
+   `{"reviewer": "code", "id": "HUMAN-1", "severity": "important", "file": "", "line": null, "summary": <notes as JSON string>, "fix": <notes as JSON string>}`,
+   and `<taskDir>/findings-R<n>-human.md` = the same union rendered as in FIX step 2, so open reviewer findings are kept
+   and the next code review marks HUMAN-1 `ADDRESSED`/`NOT_ADDRESSED`; next = FIX (section `Round <n> (human reject)`),
+   then REVIEW round `n + 1`.
+4. `delete_attribute(<tn>, escalation)`; `set_attribute(<ws>, wsStatus=executing)`; log `human reject`; ledger round
+   `#round`, phase = next → next.
 
 ## FINISH
 
@@ -289,6 +296,5 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
 
 ## Loop control
 
-After DONE go to SELECT. Stop on NEEDS-HUMAN, FINISH, a stop condition above (dirty main, merge error, smoke failure,
-unmet deps, no tasks found) or a user interrupt. Print one status line after every transition. One task at a time; the
+After DONE go to SELECT. Stop on NEEDS-HUMAN, FINISH, any stop condition above, or a user interrupt. Print one status line after every transition. One task at a time; the
 four reviewers are the only parallel agents and run only while the builder is idle.
