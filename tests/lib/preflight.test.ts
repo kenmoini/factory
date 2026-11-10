@@ -75,4 +75,17 @@ describe("preflight", () => {
     expect(r.trilium.ok).toBe(false);
     expect(r.trilium.error).toBe("no config");
   });
+
+  test("throwing config read degrades instead of rejecting", async () => {
+    const env = {
+      HOME: tmp(),
+      get FACTORY_CONFIG_DIR(): string {
+        throw new Error("boom");
+      },
+    } as unknown as NodeJS.ProcessEnv;
+    const r = await preflight({ cwd: tmp(), env, fetchImpl: (async () => { throw new Error("x"); }) as unknown as typeof fetch, exec: gitExec });
+    expect(r.config.global).toBe(false);
+    expect(r.trilium).toEqual({ ok: false, error: "no config" });
+    expect(Object.keys(r).sort()).toEqual(["config", "dashboard", "factory", "git", "graphify", "tools", "trilium"]);
+  });
 });

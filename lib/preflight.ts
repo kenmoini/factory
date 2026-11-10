@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { DEFAULT_PORT, readGlobalConfig, readRepoConfig } from "./config";
+import { DEFAULT_PORT, globalConfigDir, readGlobalConfig, readRepoConfig } from "./config";
 
 export type Preflight = {
   config: { global: boolean; repo: boolean; dir: string };
@@ -51,8 +51,15 @@ export async function preflight(opts: {
   const settle = async <T>(p: Promise<T>): Promise<T | undefined> => (await Promise.allSettled([p]))[0].status === "fulfilled" ? await p : undefined;
 
   const has = async (name: string) => (await settle(exec(["sh", "-c", `command -v ${name}`])))?.code === 0;
-  const g = readGlobalConfig(env);
-  const dir = `${env.FACTORY_CONFIG_DIR ?? `${env.HOME}/.config/claude-factory`}`;
+  const safe = <T>(fn: () => T, fallback: T): T => {
+    try {
+      return fn();
+    } catch {
+      return fallback;
+    }
+  };
+  const g = safe(() => readGlobalConfig(env), null);
+  const dir = safe(() => globalConfigDir(env), "");
   const port = g?.dashboardPort ?? DEFAULT_PORT;
   const cwd = opts.cwd;
 
@@ -82,7 +89,7 @@ export async function preflight(opts: {
       }
     : { isRepo: false };
 
-  const repoCfg = readRepoConfig(base);
+  const repoCfg = safe(() => readRepoConfig(base), null);
   const factory: Preflight["factory"] = {
     configured: repoCfg !== null,
     projectNoteId: repoCfg?.projectNoteId,
