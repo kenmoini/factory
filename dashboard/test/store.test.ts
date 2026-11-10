@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createStore, initialState, reduce, STEP_CAP, type Action, type State } from "../web/lib/store";
+import { createStore, EMPTY_STEPS, initialState, reduce, STEP_AGENTS_CAP, STEP_CAP, type Action, type State } from "../web/lib/store";
 import type { LiveAgent, Step, WorkstreamSnapshot } from "../src/shared/types";
 
 const snap = (fp: string): WorkstreamSnapshot => ({
@@ -55,6 +55,45 @@ describe("reduce", () => {
     expect(s.steps.a1).toHaveLength(500);
     expect(s.steps.a1[0].seq).toBe(3);
     expect(s.steps.a1[499].seq).toBe(502);
+  });
+
+  test("step lists are kept for at most 20 agents; the least recently active stopped agent's list goes first", () => {
+    expect(STEP_AGENTS_CAP).toBe(20);
+    expect(EMPTY_STEPS).toEqual([]);
+    const id = (i: number) => `agent-${i}`;
+    let s = initialState;
+    for (let i = 0; i < 20; i++) s = reduce(s, { type: "step", data: { agentId: id(i), step: step(0) } });
+    expect(Object.keys(s.steps)).toHaveLength(20);
+    s = reduce(s, { type: "step", data: { agentId: id(0), step: step(1) } }); // agent-0 is active again
+    s = reduce(s, { type: "step", data: { agentId: id(20), step: step(0) } });
+    expect(Object.keys(s.steps)).toHaveLength(20);
+    expect(s.steps[id(1)]).toBeUndefined();
+    expect(s.steps[id(0)].map((x) => x.seq)).toEqual([0, 1]);
+    expect(s.steps[id(20)]).toHaveLength(1);
+  });
+
+  test("a running agent's steps outlive the cap until it stops", () => {
+    const id = (i: number) => `agent-${i}`;
+    let s = reduce(initialState, { type: "agent", data: { op: "start", agent: agent(id(0)) } });
+    for (let i = 0; i < 21; i++) s = reduce(s, { type: "step", data: { agentId: id(i), step: step(0) } });
+    expect(s.steps[id(0)]).toHaveLength(1); // live, so agent-1 was dropped instead
+    expect(s.steps[id(1)]).toBeUndefined();
+    s = reduce(s, { type: "step", data: { agentId: id(21), step: step(0) } });
+    expect(s.steps[id(0)]).toHaveLength(1);
+    expect(Object.keys(s.steps)).toHaveLength(20);
+    s = reduce(s, { type: "agent", data: { op: "stop", agent: agent(id(0)) } });
+    expect(Object.keys(s.steps)).toHaveLength(20); // within the cap, so nothing is dropped on stop
+    s = reduce(s, { type: "step", data: { agentId: id(22), step: step(0) } });
+    expect(s.steps[id(0)]).toBeUndefined(); // stopped and the least recently active
+
+    // over the cap because every agent was running: the stop itself drops the stopped agent's list
+    let t = initialState;
+    for (let i = 0; i < 21; i++) t = reduce(t, { type: "agent", data: { op: "start", agent: agent(id(i)) } });
+    for (let i = 0; i < 21; i++) t = reduce(t, { type: "step", data: { agentId: id(i), step: step(0) } });
+    expect(Object.keys(t.steps)).toHaveLength(21);
+    t = reduce(t, { type: "agent", data: { op: "stop", agent: agent(id(5)) } });
+    expect(Object.keys(t.steps)).toHaveLength(20);
+    expect(t.steps[id(5)]).toBeUndefined();
   });
 
   test("select-task selects, and selecting the same task again clears it", () => {

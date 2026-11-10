@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
-export interface RepoEntry { repoPath: string; repoSlug: string; projectNoteId?: string; activeWorkstream?: string; workstreams: Record<string, { noteId: string }> }
+/** `noteId` is absent until the plugin has cached the workstream's Trilium note id in `.factory/config.json`. */
+export interface RepoEntry { repoPath: string; repoSlug: string; projectNoteId?: string; activeWorkstream?: string; workstreams: Record<string, { noteId?: string }> }
 
 function defaultReadConfig(repoPath: string): RepoEntry | null {
   try {
@@ -11,8 +12,9 @@ function defaultReadConfig(repoPath: string): RepoEntry | null {
     if (typeof raw.projectNoteId === "string") e.projectNoteId = raw.projectNoteId;
     if (typeof raw.activeWorkstream === "string") e.activeWorkstream = raw.activeWorkstream;
     for (const [slug, w] of Object.entries(raw.workstreams ?? {})) {
-      const noteId = (w as { noteId?: unknown } | null)?.noteId;
-      if (typeof noteId === "string") e.workstreams[slug] = { noteId };
+      if (!w || typeof w !== "object" || Array.isArray(w)) continue;
+      const noteId = (w as { noteId?: unknown }).noteId;
+      e.workstreams[slug] = typeof noteId === "string" && noteId ? { noteId } : {};
     }
     return e;
   } catch {

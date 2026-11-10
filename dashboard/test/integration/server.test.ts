@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { AgentRegistry } from "../../src/agents/registry";
 import { cwdSlug } from "../../src/agents/transcript-path";
 import { createApp } from "../../src/app";
@@ -45,6 +45,15 @@ beforeAll(() => {
   repoDir = mkdtempSync(join(tmpdir(), "factory-repo-"));
   mkdirSync(join(repoDir, ".factory"));
   writeFileSync(join(repoDir, ".factory/config.json"), JSON.stringify({ projectNoteId: "proj1", activeWorkstream: "demo", workstreams: { demo: { noteId: "ws1" } } }));
+  const mock = join(repoDir, ".factory/mockups/demo");
+  mkdirSync(mock, { recursive: true });
+  writeFileSync(join(mock, "index.html"), "<h1>demo mockups</h1>");
+  writeFileSync(join(mock, "style.css"), "body{color:red}");
+  writeFileSync(join(mock, "logo.svg"), "<svg xmlns='http://www.w3.org/2000/svg'/>");
+  writeFileSync(join(mock, "blob.bin"), "xx");
+  writeFileSync(join(repoDir, ".factory/secret.txt"), "secret");
+  mkdirSync(join(repoDir, ".factory/mockups-evil"));
+  writeFileSync(join(repoDir, ".factory/mockups-evil/x.html"), "evil");
   fake = startFakeEtapi({ ...loadFixtureNotes(), token: "good" });
 });
 afterAll(() => { cleanups.forEach((c) => c()); fake.stop(); rmSync(repoDir, { recursive: true, force: true }); });
@@ -69,6 +78,7 @@ describe("dashboard server", () => {
     expect(st.status).toBe(200);
     const snap = (await st.json()) as WorkstreamSnapshot;
     expect(snap.tasks).toHaveLength(5);
+    expect(snap.docs.find((d) => d.kind === "validation")).toMatchObject({ id: "v1", title: "Round 1", round: 1 });
     expect(columnFor(snap.tasks.find((t) => t.id === "t002")!)).toBe("reviewers");
     expect((await fetch(`${base}/api/state?repo=nope`)).status).toBe(404);
     expect((await fetch(`${base}/api/state?repo=${app.pollers.size ? repoDir.split("/").pop() : ""}`)).status).toBe(200);
@@ -98,6 +108,54 @@ describe("dashboard server", () => {
     expect((await post(JSON.stringify({ path: repoDir }))).status).toBe(201);
     expect((await post("{")).status).toBe(400);
     expect((await post(JSON.stringify({ path: "/nonexistent-xyz" }))).status).toBe(404);
+
+    // a workstream the plugin has not cached a noteId for yet is still listed
+    const other = mkdtempSync(join(tmpdir(), "factory-repo2-"));
+    cleanups.push(() => rmSync(other, { recursive: true, force: true }));
+    mkdirSync(join(other, ".factory"));
+    writeFileSync(join(other, ".factory/config.json"), JSON.stringify({ workstreams: { demo: { noteId: "ws1" }, next: { branch: "next", worktree: ".factory/worktrees/next" } } }));
+    const res = await post(JSON.stringify({ path: other }));
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as any).workstreams).toEqual([{ slug: "demo", noteId: "ws1" }, { slug: "next" }]);
+  });
+
+  test("mockups: files from .factory/mockups; traversal, unknown slug and missing files are 404", async () => {
+    const { app, base } = boot(fake, "good");
+    app.addRepo(repoDir);
+    const slug = basename(repoDir);
+    const m = (p: string, init?: RequestInit) => fetch(`${base}/mockups/${slug}/${p}`, init);
+
+    const dir = await m("demo/");
+    expect(dir.status).toBe(200);
+    expect(dir.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(await dir.text()).toBe("<h1>demo mockups</h1>");
+    expect((await m("demo/index.html")).status).toBe(200);
+
+    const css = await m("demo/style.css");
+    expect(css.status).toBe(200);
+    expect(css.headers.get("content-type")).toBe("text/css; charset=utf-8");
+    expect(await css.text()).toBe("body{color:red}");
+    expect((await m("demo/logo.svg")).headers.get("content-type")).toBe("image/svg+xml");
+    expect((await m("demo/blob.bin")).headers.get("content-type")).toBe("application/octet-stream");
+
+    // a directory without the trailing slash is redirected, so relative links inside the mockup resolve
+    const bare = await m("demo", { redirect: "manual" });
+    expect(bare.status).toBe(301);
+    expect(bare.headers.get("location")).toBe(`/mockups/${slug}/demo/`);
+
+    // encoded slashes survive URL normalisation and reach the resolver; mockups-evil shares the mockups prefix
+    for (const p of ["..%2fsecret.txt", "demo/..%2f..%2fsecret.txt", "%2e%2e%2fsecret.txt", "..%2fmockups-evil%2fx.html", "%2Fetc%2Fpasswd", "demo/%00", "demo/missing.html", "nope/"]) {
+      const r = await m(p);
+      expect(`${p} ${r.status}`).toBe(`${p} 404`);
+    }
+    expect((await fetch(`${base}/mockups/no-such-repo/demo/`)).status).toBe(404);
+
+    const head = await m("demo/", { method: "HEAD" });
+    expect(head.status).toBe(200);
+    expect(head.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(await head.text()).toBe("");
+    expect((await m("nope/", { method: "HEAD" })).status).toBe(404);
+    expect((await m("demo/", { method: "POST" })).status).toBe(405);
   });
 
   test("wrong token reports trilium error but server stays up", async () => {
@@ -186,6 +244,33 @@ describe("dashboard server", () => {
     const t0 = Date.now();
     while (hub.count(repoDir) > 0 && Date.now() - t0 < 500) await Bun.sleep(10);
     expect(hub.count(repoDir)).toBe(0);
+  });
+
+  test("task and model back-filled from the transcript meta are published as agent update", async () => {
+    const home = mkdtempSync(join(tmpdir(), "factory-home-"));
+    cleanups.push(() => rmSync(home, { recursive: true, force: true }));
+    const dir = join(home, ".claude/projects", cwdSlug(repoDir), "s1/subagents");
+    mkdirSync(dir, { recursive: true });
+    const fx = join(import.meta.dir, "../fixtures/transcripts/agent-sample");
+    copyFileSync(`${fx}.jsonl`, join(dir, "agent-a7.jsonl"));
+    copyFileSync(`${fx}.meta.json`, join(dir, "agent-a7.meta.json")); // description "builder T-001 [task:t001]"
+
+    const { app, base } = boot(fake, "good", home);
+    app.addRepo(repoDir);
+    const ac = new AbortController();
+    const res = await fetch(`${base}/api/stream?repo=${encodeURIComponent(repoDir)}`, { signal: ac.signal });
+    const reader = res.body!.getReader();
+    await readUntil(reader, (a) => a.includes(": connected"), 2000);
+    // the hook's own description has no [task:…] tag; the meta file written by Claude Code does
+    await fetch(`${base}/api/events`, { method: "POST", body: JSON.stringify({ event: "subagent-start", project: repoDir, payload: { agent_id: "a7", agent_type: "factory:builder", session_id: "s1", cwd: repoDir, description: "builder T-001" } }) });
+    const acc = await readUntil(reader, (a) => a.includes('"op":"update"'), 2000);
+    ac.abort();
+    const agentFrames = acc.split("\n\n").filter((f) => f.startsWith("event: agent")).map((f) => JSON.parse(f.slice(f.indexOf("data: ") + 6)));
+    expect(agentFrames[0].op).toBe("start");
+    expect(agentFrames[0].agent.taskNoteId).toBeUndefined();
+    const update = agentFrames.find((f) => f.op === "update");
+    expect(update.agent).toMatchObject({ agentId: "a7", taskNoteId: "t001", model: "opus" });
+    expect(((await (await fetch(`${base}/api/agents?repo=${encodeURIComponent(repoDir)}`)).json()) as any).live[0].taskNoteId).toBe("t001");
   });
 
   test("stopped agent keeps steps until registry eviction, then tailer is dropped", async () => {

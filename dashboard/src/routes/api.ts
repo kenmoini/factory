@@ -4,8 +4,9 @@ import type { Poller } from "../trilium/poller";
 import { TriliumError, type EtapiNote } from "../trilium/client";
 import { labelsOf } from "../trilium/mapper";
 import type { TranscriptTailer } from "../agents/tailer";
-import type { HookEvent } from "../shared/types";
+import type { HookEvent, TaskDetail } from "../shared/types";
 import { handleEvent } from "./events";
+import { mockupsRoute } from "./mockups";
 import { streamRoute } from "./stream";
 
 interface Ctx {
@@ -24,7 +25,10 @@ export function createApi(ctx: Ctx) {
   const startedAt = Date.now();
   let lastLogged = "";
 
-  const withWorkstreams = (e: RepoEntry) => ({ ...e, workstreams: Object.entries(e.workstreams).map(([slug, w]) => ({ slug, noteId: w.noteId })) });
+  const withWorkstreams = (e: RepoEntry) => ({
+    ...e,
+    workstreams: Object.entries(e.workstreams).map(([slug, w]) => (w.noteId ? { slug, noteId: w.noteId } : { slug })),
+  });
 
   function resolveRepo(key: string | null): RepoEntry | undefined {
     if (!key) return undefined;
@@ -112,7 +116,7 @@ export function createApi(ctx: Ctx) {
       if (found) break;
     }
     if (!snap || !found) return json({ error: "not found" }, 404);
-    const out: { task: typeof found; spec?: { content: string; format: "html" | "markdown" }; reviews: unknown[]; approval?: { content: string }; runs: unknown[] } = {
+    const out: TaskDetail = {
       task: found,
       reviews: snap.reviews.filter((r) => r.taskId === found.taskId),
       runs: snap.runs.filter((r) => r.taskId === found.taskId),
@@ -190,6 +194,14 @@ export function createApi(ctx: Ctx) {
 
   async function fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
+    if (url.pathname.startsWith("/mockups/")) {
+      try {
+        return await mockupsRoute(req, { repos: deps.repos });
+      } catch (e) {
+        console.error(`factory-dashboard: mockups error: ${e instanceof Error ? e.message : String(e)}`);
+        return new Response("Internal error", { status: 500 });
+      }
+    }
     const m = match(req.method, url.pathname);
     if (m === "method") return json({ error: "method not allowed" }, 405);
     if (!m) return json({ error: "not found" }, 404);

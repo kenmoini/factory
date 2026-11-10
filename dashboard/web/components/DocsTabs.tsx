@@ -71,7 +71,30 @@ function useDoc(id: string, modified: string, attempt: number): Load {
 function docPath(snapshot: WorkstreamSnapshot, doc: Doc): string {
   const ws = snapshot.workstream;
   const base = `ClaudeProjects/${snapshot.project.title}`;
+  if (ws && doc.kind === "validation") return `${base}/Workstreams/${ws.slug}/Validation/${doc.title}`;
   return ws && doc.parentId === ws.id ? `${base}/Workstreams/${ws.slug}/${doc.title}` : `${base}/${doc.title}`;
+}
+
+/** Validation rounds, newest first: by the `round` label, else the number in the `Round <N>` title. */
+export function validationRounds(snapshot: WorkstreamSnapshot | null): Doc[] {
+  const n = (d: Doc) => d.round || Number(d.title.match(/\d+/)?.[0] ?? 0);
+  return (snapshot?.docs.filter((d) => d.kind === "validation") ?? []).sort((a, b) => n(b) - n(a));
+}
+
+/** The Validation tab: one button per round (newest first) above the chosen round's note, the newest by default. */
+function ValidationRounds({ snapshot, rounds }: { snapshot: WorkstreamSnapshot; rounds: Doc[] }) {
+  const [picked, setPicked] = useState<string>();
+  const doc = rounds.find((d) => d.id === picked) ?? rounds[0];
+  return (
+    <>
+      <nav className="rounds" aria-label="Validation rounds">
+        {rounds.map((d) => (
+          <button key={d.id} type="button" className="round-pick" aria-pressed={d.id === doc.id} onClick={() => setPicked(d.id)}>{d.title}</button>
+        ))}
+      </nav>
+      <DocView key={doc.id} snapshot={snapshot} doc={doc} />
+    </>
+  );
 }
 
 function DocView({ snapshot, doc }: { snapshot: WorkstreamSnapshot; doc: Doc }) {
@@ -95,6 +118,10 @@ function DocView({ snapshot, doc }: { snapshot: WorkstreamSnapshot; doc: Doc }) 
 
 /** One document tab: the rendered note, or a note saying it does not exist yet. */
 export function DocsTab({ tab, snapshot }: { tab: DocTab; snapshot: WorkstreamSnapshot | null }) {
+  if (tab.kind === "validation" && snapshot) {
+    const rounds = validationRounds(snapshot);
+    if (rounds.length > 0) return <ValidationRounds snapshot={snapshot} rounds={rounds} />;
+  }
   const doc = findDoc(snapshot, tab.kind);
   if (snapshot && doc) return <DocView key={doc.id} snapshot={snapshot} doc={doc} />;
   return (

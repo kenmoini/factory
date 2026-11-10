@@ -2,7 +2,7 @@ import type { EventHub } from "../hub";
 import type { RepoEntry } from "../repos";
 import type { Doc, LiveAgent, WorkstreamSnapshot } from "../shared/types";
 import type { EtapiNote, TriliumClient } from "./client";
-import { fingerprint, labelsOf, toAgentRun, toDoc, toMilestone, toProject, toReview, toTask, toWorkstream } from "./mapper";
+import { fingerprint, labelsOf, toAgentRun, toDoc, toMilestone, toProject, toReview, toTask, toValidationDoc, toWorkstream } from "./mapper";
 
 export interface PollerDeps { client: TriliumClient; hub: EventHub; live: () => LiveAgent[]; now?: () => Date }
 
@@ -63,25 +63,29 @@ export class Poller {
       const wsNotes = await client.search("#factoryWorkstream", { ancestorNoteId: pid });
       const wsNote = (this.activeSlug && wsNotes.find((n) => (labelsOf(n).slug ?? n.title) === this.activeSlug)) || wsNotes[0];
 
-      let milestones: EtapiNote[] = [], tasks: EtapiNote[] = [], wsDocs: EtapiNote[] = [], reviews: EtapiNote[] = [];
+      let milestones: EtapiNote[] = [], tasks: EtapiNote[] = [], wsDocs: EtapiNote[] = [], reviews: EtapiNote[] = [], validations: EtapiNote[] = [];
       if (wsNote) {
         const o = { ancestorNoteId: wsNote.noteId };
         milestones = await client.search("#factoryMilestone", o);
         tasks = await client.search("#factoryTask", o);
         wsDocs = await client.search("#factoryDoc", o);
         reviews = await client.search("#factoryReview", o);
+        validations = await client.search("#factoryValidation", o);
       }
       const runs = await client.search("#factoryAgentRun", { ancestorNoteId: pid, orderBy: "utcDateModified", orderDirection: "desc", limit: 200 });
       const projDocs = await client.search("#factoryDoc", { ancestorNoteId: pid, ancestorDepth: "eq1" });
 
       const seen = new Set<string>();
       const docNotes = [...wsDocs, ...projDocs].filter((n) => !seen.has(n.noteId) && !!seen.add(n.noteId));
-      const all = [projectNote, ...wsNotes, ...milestones, ...tasks, ...docNotes, ...reviews, ...runs];
+      const roundNotes = validations.filter((n) => !seen.has(n.noteId) && !!seen.add(n.noteId));
+      const all = [projectNote, ...wsNotes, ...milestones, ...tasks, ...docNotes, ...roundNotes, ...reviews, ...runs];
       const fp = fingerprint(all);
       this.err = null;
       if (this.snap && this.snap.fingerprint === fp) return false;
 
-      const docs: Doc[] = docNotes.map(toDoc);
+      // validation rounds newest first, so the Validation tab opens on the latest one
+      const rounds = roundNotes.map(toValidationDoc).sort((a, b) => (b.round ?? 0) - (a.round ?? 0));
+      const docs: Doc[] = [...docNotes.map(toDoc), ...rounds];
       this.snap = {
         project: toProject(projectNote),
         workstream: wsNote ? toWorkstream(wsNote) : null,

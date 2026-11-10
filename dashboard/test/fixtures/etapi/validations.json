@@ -1,0 +1,74 @@
+{
+  "results": [
+    {
+      "noteId": "v1",
+      "title": "Round 1",
+      "type": "text",
+      "mime": "text/html",
+      "attributes": [
+        {
+          "attributeId": "a96",
+          "noteId": "v1",
+          "type": "label",
+          "name": "factoryValidation",
+          "value": "",
+          "position": 10,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a97",
+          "noteId": "v1",
+          "type": "label",
+          "name": "round",
+          "value": "1",
+          "position": 20,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a98",
+          "noteId": "v1",
+          "type": "label",
+          "name": "verdict",
+          "value": "pass",
+          "position": 30,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a99",
+          "noteId": "v1",
+          "type": "label",
+          "name": "planRev",
+          "value": "1",
+          "position": 40,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a100",
+          "noteId": "v1",
+          "type": "label",
+          "name": "project",
+          "value": "demo-repo",
+          "position": 50,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a101",
+          "noteId": "v1",
+          "type": "label",
+          "name": "workstream",
+          "value": "demo",
+          "position": 60,
+          "isInheritable": false
+        }
+      ],
+      "parentNoteIds": [
+        "ws1"
+      ],
+      "childNoteIds": [],
+      "dateCreated": "2026-11-10 09:00:00.000+0000",
+      "dateModified": "2026-11-10 10:00:00.000+0000",
+      "utcDateCreated": "2026-11-10 09:00:00.000Z",
+      "utcDateModified": "2026-11-10 10:00:00.000Z"
+    }
+  ]
+}

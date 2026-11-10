@@ -84,6 +84,9 @@ export function loadFixtureNotes(): { notes: EtapiNote[]; contents: Record<strin
     d3: "# API Design\n\nGET /api/state",
     t002spec: "<p>T-002 task spec</p>",
     t002appr: "<p>Approved by approver</p>",
+    r1: "<p>No secrets in the diff; no new permissions.</p>",
+    r2: "<p>The loader swallows fetch errors. Surface them to the caller.</p>",
+    v1: "<h1>Validation</h1><p>Round 1, plan rev 1: <strong>pass</strong>. No lens failed.</p>",
   };
   return { notes, contents };
 }

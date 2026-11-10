@@ -20,6 +20,7 @@ export interface EventDeps {
 const ok = () => new Response(null, { status: 204 });
 const str = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined);
 const SAFE = /^[A-Za-z0-9_-]+$/;
+const TASK_TAG = /\[task:([^\]]+)\]/;
 
 export function handleEvent(body: unknown, deps: EventDeps): Response {
   if (!body || typeof body !== "object" || Array.isArray(body)) return Response.json({ error: "object body required" }, { status: 400 });
@@ -72,11 +73,16 @@ function onStart(repoKey: string, p: Record<string, unknown>, deps: EventDeps): 
         metaReread = true; // once, the first time the file is seen
         const m = readMeta(tailer.path);
         if (m?.description && !cur.description) patch.description = m.description;
-        const t = (patch.description ?? cur.description)?.match(/\[task:([^\]]+)\]/);
+        // the hook's description may lack the tag that the prompt (and so the meta file) carries
+        const t = (patch.description ?? cur.description)?.match(TASK_TAG) ?? m?.description?.match(TASK_TAG);
         if (t && !cur.taskNoteId) patch.taskNoteId = t[1];
         if (m?.model && !cur.model) patch.model = m.model;
       }
-      deps.registry.touch(agentId, patch);
+      const updated = deps.registry.touch(agentId, patch);
+      // stepCount alone rides on the step events; a back-filled task, model or description changes the card line
+      if (updated && (patch.description || patch.taskNoteId || patch.model)) {
+        deps.hub.publish(repoKey, { type: "agent", data: { op: "update", agent: { ...updated } } });
+      }
       deps.hub.publish(repoKey, { type: "step", data: { agentId, step } });
     });
     deps.tailers.set(agentId, tailer);

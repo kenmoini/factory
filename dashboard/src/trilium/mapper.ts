@@ -59,6 +59,11 @@ export function toDoc(n: EtapiNote): Doc {
   return d;
 }
 
+/** A validation `Round <N>` note (`#factoryValidation`, not `#factoryDoc`), listed under the Validation tab. */
+export function toValidationDoc(n: EtapiNote): Doc {
+  return { ...toDoc(n), kind: "validation", round: int(labelsOf(n).round) };
+}
+
 export function toReview(n: EtapiNote): Review {
   const l = labelsOf(n);
   const reviewer = (l.reviewer ?? "") as Reviewer;

@@ -10,7 +10,7 @@ import { Poller } from "../src/trilium/poller";
 const load = (f: string): EtapiNote[] => JSON.parse(readFileSync(join(import.meta.dir, "fixtures/etapi", `${f}.json`), "utf8")).results;
 
 function setup(projectNoteId?: string) {
-  const state = { bump: 0, fail: false, calls: [] as { q: string; opts: any }[], getNotes: 0 };
+  const state = { bump: 0, vbump: 0, fail: false, calls: [] as { q: string; opts: any }[], getNotes: 0 };
   const byLabel: Record<string, () => EtapiNote[]> = {
     "#factoryProject": () => load("project"),
     "#factoryWorkstream": () => load("workstreams"),
@@ -19,6 +19,7 @@ function setup(projectNoteId?: string) {
     "#factoryDoc": () => load("docs"),
     "#factoryReview": () => load("reviews"),
     "#factoryAgentRun": () => load("runs"),
+    "#factoryValidation": () => load("validations").map((n) => (state.vbump ? { ...n, utcDateModified: "2026-12-01T00:00:00.000Z" } : n)),
   };
   const client = {
     search: async (q: string, opts: any = {}) => {
@@ -70,6 +71,25 @@ describe("Poller", () => {
     expect(state.calls.some((c) => c.q === "#factoryDoc" && c.opts.ancestorNoteId === "proj1" && c.opts.ancestorDepth === "eq1")).toBe(true);
     const ids = poller.snapshot()!.docs.map((d) => d.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  test("validation rounds are searched under the workstream and listed as validation docs", async () => {
+    const { state, poller } = setup("proj1");
+    await poller.refresh();
+    const call = state.calls.find((c) => c.q === "#factoryValidation");
+    expect(call?.opts.ancestorNoteId).toBe("ws1");
+    const v = poller.snapshot()!.docs.filter((d) => d.kind === "validation");
+    expect(v).toEqual([{ id: "v1", kind: "validation", title: "Round 1", format: "html", parentId: "ws1", modified: "2026-11-10 10:00:00.000Z", round: 1 }]);
+  });
+
+  test("a changed validation round is part of the fingerprint", async () => {
+    const { state, events, poller } = setup("proj1");
+    expect(await poller.refresh()).toBe(true);
+    expect(await poller.refresh()).toBe(false);
+    state.vbump = 1;
+    expect(await poller.refresh()).toBe(true);
+    expect(events.length).toBe(2);
+    expect(poller.snapshot()!.docs.find((d) => d.id === "v1")!.modified).toBe("2026-12-01T00:00:00.000Z");
   });
 
   test("finds project by repoPath when id unknown", async () => {

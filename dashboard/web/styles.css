@@ -272,7 +272,7 @@ main { position: relative; min-height: 0; min-width: 0; }
 .drawer-steps { flex: none; max-height: 52%; overflow-y: auto; padding: 13px 20px 12px; border-top: 1px solid var(--rule); background: #202326; }
 .drawer-steps h3 { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font: 700 14.5px/1.2 var(--f-cond); color: var(--ink-2); }
 .live-tag { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; font: 600 12px/1 var(--f-text); color: var(--lamp); }
-.steps li { display: grid; grid-template-columns: 36px 1fr auto; gap: 10px; align-items: baseline; padding: 6px 0; }
+.steps li { display: grid; grid-template-columns: minmax(36px, auto) 1fr auto; gap: 10px; align-items: baseline; padding: 6px 0; } /* app: min, so h:mm:ss fits */
 .steps time { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .step-text { font-size: 13px; line-height: 1.45; color: var(--ink-2); }
 .step-tool { font: 12px/1.5 var(--f-code); color: var(--ink); overflow-wrap: anywhere; }
@@ -282,6 +282,48 @@ main { position: relative; min-height: 0; min-width: 0; }
 .res-err { color: var(--changes); }
 .res-run { display: inline-flex; align-items: center; gap: 7px; color: var(--lamp); }
 .steps li.is-live { margin: 2px -8px 0; padding: 7px 8px; border-radius: 5px; background: var(--lamp-wash); }
+/* app: the drawer takes focus when it opens (for keyboard users); it needs no ring of its own */
+.drawer:focus { outline: none; }
+/* app: the steps list follows the newest step, so its heading stays in view */
+.drawer-steps h3 { position: sticky; top: -6px; z-index: 1; margin-top: -13px; padding-top: 13px; background: #202326; }
+.drawer-state { font-size: 13px; color: var(--ink-3); }
+.drawer-head .drawer-state { margin-top: 6px; }
+.drawer-error { display: grid; justify-items: start; gap: 10px; border-color: rgba(242, 124, 118, .45); }
+/* app: Trilium note bodies in the drawer (task spec, review notes, approval) */
+.rich { font-size: 13.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.rich > * + * { margin-top: 8px; }
+.rich :is(h1, h2, h3, h4) { font: 700 15px/1.3 var(--f-cond); color: var(--ink); }
+.rich :is(ul, ol) { padding-left: 1.2em; }
+.rich ul { list-style: disc; }
+.rich ol { list-style: decimal; }
+.rich li + li { margin-top: 3px; }
+.rich li::marker { color: var(--ink-3); }
+.rich code { padding: 1px 4px; border-radius: 3px; background: var(--plate); }
+.rich pre { padding: 8px 10px; border-radius: 5px; background: var(--bay); overflow-x: auto; font: 12px/1.45 var(--f-code); }
+.rich pre code { padding: 0; background: none; }
+.rich a { color: var(--ink); text-underline-offset: 2px; }
+.rich table { border-collapse: collapse; font-size: 12.5px; }
+.rich :is(th, td) { padding: 4px 6px; border: 1px solid var(--rule-soft); text-align: left; vertical-align: top; }
+.rich img { max-width: 100%; }
+/* app: a review's note opens under its verdict */
+.reviews details { min-width: 0; }
+.reviews summary { padding: 1px 0; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+.reviews summary:hover { color: var(--ink); }
+.review-note { margin: 6px 0 4px; padding-left: 10px; border-left: 2px solid var(--rule); font-size: 13px; color: var(--ink-2); }
+/* app: agent runs recorded on the task */
+.runs li { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(64px, auto); gap: 10px; align-items: baseline; padding: 3px 0; }
+.run-agent { font: 600 13.5px/1.3 var(--f-cond); }
+.run-status { padding: 3px 6px; border-radius: 3px; background: rgba(236, 232, 225, .08); font: 600 12px/1 var(--f-cond); color: var(--ink-2); }
+.run-failed { color: var(--changes); background: var(--changes-wash); }
+.run-time { font-size: 12.5px; color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* app: step rows beyond the mockup's (thinking, long text, nothing yet) and the agent picker for parallel reviewers */
+.step-text { white-space: pre-line; overflow-wrap: anywhere; }
+.step-think { font-size: 12.5px; font-style: italic; color: var(--ink-3); }
+.steps li.steps-empty { display: block; padding: 8px 0; font-size: 13px; color: var(--ink-3); }
+.step-agents { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 4px; }
+.step-agent { padding: 3px 8px; border: 1px solid var(--rule); border-radius: 3px; font: 600 12.5px/1.2 var(--f-cond); color: var(--ink-2); }
+.step-agent:hover { color: var(--ink); }
+.step-agent[aria-pressed="true"] { border-color: var(--ink); color: var(--ink); }
 
 /* ==========================================================================
    8. Document tabs
@@ -320,6 +362,63 @@ main { position: relative; min-height: 0; min-width: 0; }
 .doc-error { display: grid; justify-items: start; gap: 12px; border-color: rgba(242, 124, 118, .45); }
 .doc-retry { padding: 5px 10px; border: 1px solid var(--rule); border-radius: 5px; font: 600 13px/1.2 var(--f-text); color: var(--ink); }
 .doc-retry:hover { border-color: #50565C; background: var(--plate); }
+
+/* ==========================================================================
+   app: Agents tab (lists beside the selected agent's steps), Mockups tab, Validation rounds
+   ========================================================================== */
+.agents-panel { height: 100%; overflow: hidden; padding: 14px var(--pad) 16px; }
+.agents { display: grid; grid-template-columns: minmax(280px, 380px) minmax(0, 1fr); gap: 16px; height: 100%; }
+.agents-lists { display: flex; flex-direction: column; gap: 18px; min-height: 0; overflow-y: auto; padding: 2px 4px 12px 2px; }
+.agents-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; padding: 4px 5px 8px; border-bottom: 2px solid var(--rule-soft); font: 700 15.5px/1.1 var(--f-cond); letter-spacing: .01em; }
+.agent-list { display: grid; gap: 6px; }
+.agent-model { font-weight: 500; color: var(--ink-2); }
+.task-link {
+  position: relative; /* above the card's full-size open button */
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 3px;
+}
+.task-link:hover { color: var(--ink); text-decoration-color: var(--ink-3); }
+.agent-none, .agents-none, .agents-last { font-size: 12.5px; color: var(--ink-3); }
+.agents-none { padding: 6px 5px; }
+.agent-steps { display: flex; flex-direction: column; min-height: 0; border-radius: 8px; background: #202326; box-shadow: inset 0 0 0 1px var(--rule-soft); }
+.agent-steps-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 13px 20px 10px; border-bottom: 1px solid var(--rule-soft); }
+.agent-steps-head h2 { font: 700 18px/1.2 var(--f-cond); }
+.agent-desc { flex-basis: 100%; font-size: 12.5px; color: var(--ink-3); }
+.agent-steps-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 20px 12px; }
+.agent-steps-none { display: grid; place-items: center; font-size: 14px; color: var(--ink-3); }
+.agents-empty { padding: 24px; }
+
+.mockups-panel { height: 100%; min-height: 0; }
+.mockups { display: flex; flex-direction: column; height: 100%; }
+.mockups-bar { display: flex; align-items: center; gap: 10px; padding: 8px var(--pad); border-bottom: 1px solid var(--rule-soft); }
+.mockups-bar .doc-path { margin-right: auto; }
+.mockups-bar a { text-decoration: none; }
+.mockups-frame { flex: 1; width: 100%; border: 0; background: #fff; }
+.mockups-note { display: grid; justify-items: start; gap: 10px; }
+.mockups-note code { color: var(--ink); overflow-wrap: anywhere; }
+
+.rounds { display: flex; flex-wrap: wrap; gap: 6px; max-width: 66ch; margin-bottom: 18px; }
+.round-pick { padding: 4px 10px; border: 1px solid var(--rule); border-radius: 5px; font: 600 13.5px/1.2 var(--f-cond); color: var(--ink-2); }
+.round-pick:hover { color: var(--ink); border-color: #50565C; }
+.round-pick[aria-pressed="true"] { color: var(--ink); border-color: var(--ink); }
+
+@media (max-width: 760px) {
+  .agents-panel { overflow: auto; }
+  .agents { grid-template-columns: 1fr; height: auto; }
+  .agent-steps-scroll { max-height: 60vh; }
+}
 
 /* ==========================================================================
    9. Responsive and reduced motion

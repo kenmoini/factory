@@ -1,11 +1,15 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Agents } from "./components/Agents";
 import { DocsTab, findDoc, type DocTab } from "./components/DocsTabs";
 import { Kanban } from "./components/Kanban";
+import { Mockups } from "./components/Mockups";
+import { TaskDrawer } from "./components/TaskDrawer";
 import { dispatch, store, useStore } from "./lib/store";
 import { connect } from "./lib/stream";
 import type { WorkstreamSnapshot } from "../src/shared/types";
 
-interface RepoInfo { repoPath: string; repoSlug: string; activeWorkstream?: string; workstreams: { slug: string; noteId: string }[] }
+/** `noteId` is missing for a workstream the plugin has not linked to its Trilium note yet. */
+interface RepoInfo { repoPath: string; repoSlug: string; activeWorkstream?: string; workstreams: { slug: string; noteId?: string }[] }
 
 interface TabDef { id: string; label: string; kind?: string }
 
@@ -193,15 +197,12 @@ function Board({ snapshot, repos, failed }: { snapshot: WorkstreamSnapshot | nul
   return <Kanban snapshot={snapshot} />;
 }
 
-function Placeholder({ title, note }: { title: string; note: string }) {
-  return <article className="doc"><h1>{title}</h1><p className="doc-note">{note}</p></article>;
-}
-
 export function App() {
   const repo = useStore((s) => s.repo);
   const tab = useStore((s) => s.tab);
   const snapshot = useStore((s) => s.snapshot);
   const selectedTask = useStore((s) => s.selectedTask);
+  const ws = useStore((s) => s.ws);
   const { repos, failed } = useRepos();
   const current = repos?.find((r) => r.repoPath === repo);
 
@@ -220,16 +221,8 @@ export function App() {
     document.title = current ? `${current.repoSlug}${ws ? ` / ${ws}` : ""}: factory` : "factory";
   }, [current, snapshot]);
 
-  const onEscape = useCallback((e: globalThis.KeyboardEvent) => {
-    if (e.key === "Escape" && store.getState().selectedTask) dispatch({ type: "select-task" });
-  }, []);
-  useEffect(() => {
-    if (!selectedTask) return;
-    document.addEventListener("keydown", onEscape);
-    return () => document.removeEventListener("keydown", onEscape);
-  }, [selectedTask, onEscape]);
-
   const def = TABS.find((t) => t.id === tab) ?? TABS[0];
+  const workstream = snapshot?.workstream?.slug ?? ws ?? current?.activeWorkstream;
   return (
     <>
       <header className="chrome">
@@ -238,14 +231,22 @@ export function App() {
       </header>
       <main>
         {def.id === "board" ? (
-          <section className="board-panel" id="panel-board" role="tabpanel" aria-labelledby="tab-board">
+          // drawer-open squeezes the lanes so all seven stay visible beside the drawer
+          <section className={`board-panel${selectedTask && snapshot?.workstream ? " drawer-open" : ""}`} id="panel-board" role="tabpanel" aria-labelledby="tab-board">
             <Board snapshot={snapshot} repos={repos} failed={failed} />
+            {snapshot?.workstream && <TaskDrawer snapshot={snapshot} />}
+          </section>
+        ) : def.id === "agents" ? (
+          <section className="agents-panel" id="panel-agents" role="tabpanel" aria-labelledby="tab-agents">
+            <Agents key={current?.repoPath} repo={current?.repoPath} snapshot={snapshot} />
+          </section>
+        ) : def.id === "mockups" ? (
+          <section className="mockups-panel" id="panel-mockups" role="tabpanel" aria-labelledby="tab-mockups">
+            <Mockups repoSlug={current?.repoSlug} repoPath={current?.repoPath} workstream={workstream} />
           </section>
         ) : (
           <section className="doc-panel" id={`panel-${def.id}`} role="tabpanel" aria-labelledby={`tab-${def.id}`}>
-            {def.kind ? <DocsTab tab={def as DocTab} snapshot={snapshot} />
-              : def.id === "agents" ? <Placeholder title="Agents" note="Running and recent subagents for this repo, each with its live step list, will show here." />
-              : <Placeholder title="Mockups" note="HTML mockups from .factory/mockups for this workstream will show here in a frame." />}
+            <DocsTab tab={def as DocTab} snapshot={snapshot} />
           </section>
         )}
       </main>

@@ -13,6 +13,9 @@ export function stripId(title: string, id: string): string {
   return id && title.startsWith(id + " ") ? title.slice(id.length + 1).trim() || title : title;
 }
 
+/** Plugin agent types are namespaced (`factory:builder`); the board shows the bare name. */
+export const agentName = (type: string) => type.replace(/^factory:/, "") || "agent";
+
 const time = (iso?: string) => {
   const t = iso ? Date.parse(iso) : NaN;
   return Number.isNaN(t) ? undefined : t;
@@ -25,7 +28,7 @@ function agentLine(task: Task, live: LiveAgent[], runs: AgentRun[]): AgentLine |
   if (live.length > 0) {
     const start = Math.min(...live.map((a) => time(a.startedAt) ?? Infinity));
     let label: string;
-    if (live.length === 1) label = live[0].model ? `${live[0].agentType} · ${live[0].model}` : live[0].agentType;
+    if (live.length === 1) label = live[0].model ? `${agentName(live[0].agentType)} · ${live[0].model}` : agentName(live[0].agentType);
     else label = `${live.length} ${live.every((a) => a.agentType.endsWith("reviewer")) ? "reviewers" : "agents"}`;
     return { label, live: true, start: Number.isFinite(start) ? start : undefined, ticking: true };
   }
@@ -33,7 +36,7 @@ function agentLine(task: Task, live: LiveAgent[], runs: AgentRun[]): AgentLine |
   // latest run by start time; runs arrive newest-modified first, which breaks ties
   const latest = runs.reduce((a, b) => ((time(b.startedAt) ?? -Infinity) > (time(a.startedAt) ?? -Infinity) ? b : a));
   const start = time(latest.startedAt), end = time(latest.endedAt);
-  return { label: latest.agentType || "agent", live: false, start, end, ticking: latest.status === "running" && end === undefined };
+  return { label: agentName(latest.agentType), live: false, start, end, ticking: latest.status === "running" && end === undefined };
 }
 
 function Elapsed({ start, end, ticking }: { start: number; end?: number; ticking: boolean }) {
