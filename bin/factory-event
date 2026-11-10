@@ -1,0 +1,73 @@
+#!/bin/sh
+# factory-event <kind> [--stage S] [--status ST] [--task T] [--workstream W]
+# Relays hook JSON (stdin) to the local dashboard. Never blocks; always exits 0.
+
+PROJECT="${CLAUDE_PROJECT_DIR:-$PWD}"
+PROJ_CFG="$PROJECT/.factory/config.json"
+[ -f "$PROJ_CFG" ] || exit 0
+
+KIND="${1:-}"
+[ -n "$KIND" ] || exit 0
+shift
+
+STAGE="" STATUS="" TASK="" WORKSTREAM=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --stage) STAGE="${2:-}"; shift ;;
+    --status) STATUS="${2:-}"; shift ;;
+    --task) TASK="${2:-}"; shift ;;
+    --workstream) WORKSTREAM="${2:-}"; shift ;;
+  esac
+  shift
+done
+
+json_escape() {
+  printf '%s' "$1" | sed 's/[\\"]/\\&/g'
+}
+
+read_port() {
+  [ -f "$1" ] || return 0
+  tr -d '\n' < "$1" | sed -n 's/.*"dashboardPort"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p'
+}
+
+read_workstream() {
+  tr -d '\n' < "$PROJ_CFG" | sed -n 's/.*"activeWorkstream"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+}
+
+build_body() {
+  payload=""
+  if [ ! -t 0 ]; then payload=$(cat); fi
+  trimmed=$(printf '%s' "$payload" | tr -d ' \t\r\n')
+  if [ -z "$trimmed" ]; then
+    payload="{}"
+  else
+    case "$trimmed" in
+      \{*|\[*) ;;
+      *) payload="\"$(printf '%s' "$payload" | tr '\n\r\t' '   ' | sed 's/[\\"]/\\&/g')\"" ;;
+    esac
+  fi
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  printf '{"event":"%s","ts":"%s","project":"%s"' \
+    "$(json_escape "$KIND")" "$ts" "$(json_escape "$PROJECT")"
+  [ -n "$STAGE" ] && printf ',"stage":"%s"' "$(json_escape "$STAGE")"
+  [ -n "$STATUS" ] && printf ',"status":"%s"' "$(json_escape "$STATUS")"
+  [ -n "$TASK" ] && printf ',"task":"%s"' "$(json_escape "$TASK")"
+  [ -n "$WORKSTREAM" ] && printf ',"workstream":"%s"' "$(json_escape "$WORKSTREAM")"
+  printf ',"payload":%s}' "$payload"
+}
+
+post() {
+  build_body | curl -s -m 2 --connect-timeout 1 -X POST -H 'Content-Type: application/json' \
+    --data-binary @- "http://127.0.0.1:$PORT/api/events" >/dev/null 2>&1 || true
+}
+
+PORT=$(read_port "${FACTORY_CONFIG_DIR:-$HOME/.config/claude-factory}/config.json")
+PORT="${PORT:-7777}"
+
+if [ "$KIND" = "session-start" ]; then
+  slug=$(read_workstream)
+  printf 'Factory project detected (active workstream: %s). Run /factory:run status.\n' "${slug:-none}"
+fi
+
+post
+exit 0
