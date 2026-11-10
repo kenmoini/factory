@@ -34,9 +34,11 @@ const skillFiles = () => skillDirs().map((d) => `skills/${d}/SKILL.md`);
 const agentFiles = () => mdIn("agents");
 const fm = (rel: string) => parseFrontmatter(read(rel));
 const missing = (want: string[], have: string[]) => want.filter((x) => !have.includes(x));
+/** skills/run/ exists from Task 11 (references, templates); the skill rules start once SKILL.md lands (Task 12). */
+const NO_RUN_SKILL = !existsSync(abs("skills/run/SKILL.md"));
 
 // ---------- rule 1: skill frontmatter ----------
-test("skills: SKILL.md exists per dir, name === dir, non-empty description", () => {
+test.skipIf(NO_RUN_SKILL)("skills: SKILL.md exists per dir, name === dir, non-empty description", () => {
   const problems: string[] = [];
   for (const d of skillDirs()) {
     const f = `skills/${d}/SKILL.md`;
@@ -48,7 +50,7 @@ test("skills: SKILL.md exists per dir, name === dir, non-empty description", () 
   expect(problems, problems.join("\n")).toEqual([]);
 });
 
-test.skipIf(!existsSync(abs("skills/run")))("skills: the set of skill dirs equals the 12 expected", () => {
+test.skipIf(NO_RUN_SKILL)("skills: the set of skill dirs equals the 12 expected", () => {
   const have = skillDirs();
   const msg = `missing: [${missing(SKILLS, have)}] unexpected: [${missing(have, SKILLS)}]`;
   expect([...have].sort(), msg).toEqual([...SKILLS].sort());
@@ -111,7 +113,7 @@ test("paths: $PLUGIN_ROOT/<rel> in skills/run/**/*.md exist", () => {
 });
 
 // ---------- rule 5: run skill references every stage ----------
-test.skipIf(!existsSync(abs("skills/run")))("run: SKILL.md mentions each stages/<s>.md and each exists", () => {
+test.skipIf(NO_RUN_SKILL)("run: SKILL.md mentions each stages/<s>.md and each exists", () => {
   const body = read("skills/run/SKILL.md");
   const problems: string[] = [];
   for (const s of STAGES) {
@@ -157,5 +159,20 @@ test("size budgets: SKILL.md/references/stages/agents within limits", () => {
       const n = readFileSync(abs(f)).length;
       if (n > max) problems.push(`${relative(ROOT, abs(f))}: ${n} chars > ${max}`);
     }
+  expect(problems, problems.join("\n")).toEqual([]);
+});
+
+// ---------- rule 8: templates ----------
+const TEMPLATES = ["goal", "examination", "standards", "enforcement-plan", "overview", "uiux-spec", "api-design", "task-spec", "build-report", "review", "approval", "validation", "human-decision"];
+test("templates: set equals the 13 expected; '# ' title on line 1, factoryDoc comment on line 2", () => {
+  const files = mdIn("skills/run/templates");
+  const have = files.map((f) => f.replace(/^skills\/run\/templates\//, "").replace(/\.md$/, ""));
+  const problems: string[] = [];
+  if ([...have].sort().join() !== [...TEMPLATES].sort().join()) problems.push(`templates: missing: [${missing(TEMPLATES, have)}] unexpected: [${missing(have, TEMPLATES)}]`);
+  for (const f of files) {
+    const [l1 = "", l2 = ""] = read(f).split("\n");
+    if (!l1.startsWith("# ")) problems.push(`${f}: line 1 must be a "# " title`);
+    if (!/^<!-- factoryDoc: [a-z-]+ -->$/.test(l2)) problems.push(`${f}: line 2 must be "<!-- factoryDoc: <kind> -->"`);
+  }
   expect(problems, problems.join("\n")).toEqual([]);
 });
