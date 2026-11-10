@@ -10,10 +10,20 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 const write = (o: object) => writeFileSync(join(dir, "config.json"), JSON.stringify(o));
 
 describe("loadConfig", () => {
-  test("reads file, strips trailing slash, applies defaults", () => {
+  test("only dashboardPort in the file: no Trilium config, no throw, TLS verification off", () => {
+    write({ dashboardPort: 9000 });
+    const c = loadConfig({ FACTORY_CONFIG_DIR: dir, HOME: "/h" });
+    expect(c).toEqual({ port: 9000, pollMs: 3000, configDir: dir, homeDir: "/h", tlsVerify: false });
+  });
+  test("no file, no env: defaults", () => {
+    expect(loadConfig({ FACTORY_CONFIG_DIR: dir })).toEqual({ port: 7777, pollMs: 3000, configDir: dir, homeDir: "", tlsVerify: false });
+    writeFileSync(join(dir, "config.json"), "{ broken");
+    expect(loadConfig({ FACTORY_CONFIG_DIR: dir }).port).toBe(7777);
+  });
+  test("legacy file keys are still read (global fallback), trailing slash stripped", () => {
     write({ triliumUrl: "http://t:8080/", etapiToken: "tok", dashboardPort: 9000 });
     const c = loadConfig({ FACTORY_CONFIG_DIR: dir, HOME: "/h" });
-    expect(c).toEqual({ triliumUrl: "http://t:8080", etapiToken: "tok", port: 9000, pollMs: 3000, configDir: dir, homeDir: "/h" });
+    expect(c).toEqual({ triliumUrl: "http://t:8080", etapiToken: "tok", port: 9000, pollMs: 3000, configDir: dir, homeDir: "/h", tlsVerify: false });
   });
   test("env overrides file", () => {
     write({ triliumUrl: "http://file", etapiToken: "ftok", dashboardPort: 9000 });
@@ -23,13 +33,9 @@ describe("loadConfig", () => {
     expect(c.port).toBe(8123);
     expect(c.pollMs).toBe(500);
   });
-  test("env alone suffices; default port 7777", () => {
-    const c = loadConfig({ FACTORY_CONFIG_DIR: dir, FACTORY_TRILIUM_URL: "http://e", FACTORY_ETAPI_TOKEN: "t" });
-    expect(c.port).toBe(7777);
-  });
-  test("missing config throws no config", () => {
-    expect(() => loadConfig({ FACTORY_CONFIG_DIR: dir })).toThrow("no config");
-    write({ triliumUrl: "http://x" });
-    expect(() => loadConfig({ FACTORY_CONFIG_DIR: dir })).toThrow("no config");
+  test("FACTORY_TLS_VERIFY=1 turns TLS verification on; anything else leaves it off", () => {
+    expect(loadConfig({ FACTORY_CONFIG_DIR: dir, FACTORY_TLS_VERIFY: "1" }).tlsVerify).toBe(true);
+    expect(loadConfig({ FACTORY_CONFIG_DIR: dir, FACTORY_TLS_VERIFY: "0" }).tlsVerify).toBe(false);
+    expect(loadConfig({ FACTORY_CONFIG_DIR: dir, FACTORY_TLS_VERIFY: "" }).tlsVerify).toBe(false);
   });
 });

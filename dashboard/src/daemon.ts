@@ -7,21 +7,6 @@ const env = process.env;
 const dashboardDir = join(import.meta.dir, "..");
 const serverPath = join(import.meta.dir, "server.ts");
 
-function resolveConfig(): { configDir: string; filePort?: number } {
-  try {
-    const c = loadConfig(env);
-    return { configDir: c.configDir, filePort: c.port };
-  } catch {
-    const configDir = env.FACTORY_CONFIG_DIR ?? `${env.HOME ?? ""}/.config/claude-factory`;
-    let filePort: number | undefined;
-    try {
-      const n = Number(JSON.parse(readFileSync(join(configDir, "config.json"), "utf8"))?.dashboardPort);
-      if (Number.isFinite(n) && n > 0) filePort = n;
-    } catch { /* no config file */ }
-    return { configDir, filePort };
-  }
-}
-
 function parseArgs(argv: string[]): { cmd: string; port?: number; open: boolean } {
   const cmd = argv[0] ?? "status";
   let port: number | undefined;
@@ -34,11 +19,12 @@ function parseArgs(argv: string[]): { cmd: string; port?: number; open: boolean 
 }
 
 const args = parseArgs(process.argv.slice(2));
-const { configDir, filePort } = resolveConfig();
+// needs no Trilium config: the server reads each repo's from its .mcp.json
+const config = loadConfig(env);
+const { configDir } = config;
 const pidFile = join(configDir, "dashboard.pid");
 const logFile = join(configDir, "dashboard.log");
-const envPort = Number(env.FACTORY_DASHBOARD_PORT);
-const port = args.port ?? (Number.isInteger(envPort) && envPort > 0 ? envPort : filePort ?? 7777);
+const port = args.port ?? config.port;
 const url = `http://127.0.0.1:${port}`;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -163,7 +149,9 @@ async function start(): Promise<number> {
       cwd: dashboardDir,
       detached: true,
       stdio: ["ignore", logFd, logFd],
-      env: { ...env, FACTORY_DASHBOARD_PORT: String(port) },
+      // Trilium often runs on a self-signed certificate: TLS verification is off unless FACTORY_TLS_VERIFY=1
+      // (the clients also pass Bun's per-request `tls` option; this covers any other request the server makes)
+      env: { ...env, FACTORY_DASHBOARD_PORT: String(port), ...(config.tlsVerify ? {} : { NODE_TLS_REJECT_UNAUTHORIZED: "0" }) },
     });
   } finally { closeSync(logFd); }
   proc.unref();

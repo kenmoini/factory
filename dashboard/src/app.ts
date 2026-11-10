@@ -1,22 +1,24 @@
 import type { HTMLBundle } from "bun";
 import type { DashboardConfig } from "./config";
 import type { EventHub } from "./hub";
-import type { RepoEntry, RepoRegistry } from "./repos";
+import type { RepoEntry, RepoRegistry, TriliumCreds } from "./repos";
 import type { AgentRegistry } from "./agents/registry";
 import type { TranscriptTailer } from "./agents/tailer";
 import type { HookEvent } from "./shared/types";
-import type { TriliumClient } from "./trilium/client";
+import { NOT_CONFIGURED, TOKEN_NOT_CONFIGURED, TriliumClient, TriliumConfigError } from "./trilium/client";
 import { Poller } from "./trilium/poller";
 import { createApi } from "./routes/api";
 import { stopAgent } from "./routes/events";
 
+/** Each repo gets its own Trilium client, from the credentials `repos` resolved for it (see clientFor). */
 export interface AppDeps {
   config: DashboardConfig;
-  client: TriliumClient;
   repos: RepoRegistry;
   hub: EventHub;
   registry: AgentRegistry;
   homeDir: string;
+  /** The fetch every Trilium client uses; default the global one (tests observe requests through it). */
+  fetchImpl?: typeof fetch;
 }
 
 /** Paths that load the web app. Only these: a `/*` route would shadow `/api/*` and `/mockups/*`, which `fetch` handles. */
@@ -55,7 +57,23 @@ export function createApp(
   const tailers = new Map<string, TranscriptTailer>();
   const lastTask = new Map<string, HookEvent>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  const clients = new Map<string, { creds: TriliumCreds; client: TriliumClient }>();
   const now = opts.now ?? Date.now;
+
+  /**
+   * The repo's Trilium client, cached until the registry re-reads different credentials (a new creds object). Throws
+   * TriliumConfigError, before any request, when the repo has no Trilium configured or only a placeholder token.
+   */
+  function clientFor(repoKey: string): TriliumClient {
+    const creds = deps.repos.credentials(repoKey);
+    if (!creds) throw new TriliumConfigError(NOT_CONFIGURED);
+    if (creds.placeholder) throw new TriliumConfigError(TOKEN_NOT_CONFIGURED);
+    const hit = clients.get(repoKey);
+    if (hit?.creds === creds) return hit.client;
+    const client = new TriliumClient({ baseUrl: creds.baseUrl, token: creds.token, fetchImpl: deps.fetchImpl, tlsRejectUnauthorized: deps.config.tlsVerify });
+    clients.set(repoKey, { creds, client });
+    return client;
+  }
 
   deps.registry.onEvict((id) => { tailers.get(id)?.stop(); tailers.delete(id); });
 
@@ -73,8 +91,9 @@ export function createApp(
     const entry = deps.repos.register(path);
     if (!entry) return null;
     pollers.get(entry.repoPath)?.stop();
+    const repoKey = entry.repoPath;
     const poller = new Poller(entry, {
-      client: deps.client,
+      client: () => clientFor(repoKey),
       hub: deps.hub,
       live: () => deps.registry.list(entry.repoPath).live,
     }, { intervalMs: deps.config.pollMs });
@@ -90,9 +109,13 @@ export function createApp(
     poller.selectWorkstream(slug).catch(() => {});
   }
 
-  /** Re-reads the repo's `.factory/config.json` when it changed; a new `activeWorkstream` moves the poller (see followWorkstream). */
+  /**
+   * Re-reads the repo's `.factory/config.json` and Trilium credentials when they changed; a new `activeWorkstream`
+   * moves the poller (see followWorkstream), new credentials (e.g. the real token replacing the placeholder) refresh it.
+   */
   function syncRepo(repoKey: string): void {
     const r = deps.repos.reload(repoKey);
+    if (r?.triliumChanged) refresh(r.entry.repoPath);
     if (r?.activeChanged && r.entry.activeWorkstream) followWorkstream(r.entry.repoPath, r.entry.activeWorkstream);
   }
 
@@ -115,7 +138,7 @@ export function createApp(
     tailers.clear();
   }
 
-  const api = createApi({ deps, pollers, addRepo, tailers, lastTask, refresh, syncRepo, followWorkstream, now, heartbeatMs: opts.heartbeatMs });
+  const api = createApi({ deps, pollers, addRepo, clientFor, tailers, lastTask, refresh, syncRepo, followWorkstream, now, heartbeatMs: opts.heartbeatMs });
 
   // every route `fetch` serves (API, SSE, mockups, 404s); the SPA entry paths are static bundles served by Bun's `routes`
   async function fetch(req: Request, server?: { port?: number }): Promise<Response> {

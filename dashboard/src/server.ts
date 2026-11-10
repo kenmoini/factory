@@ -3,16 +3,16 @@ import { createApp } from "./app";
 import { loadConfig } from "./config";
 import { EventHub } from "./hub";
 import { RepoRegistry } from "./repos";
-import { TriliumClient } from "./trilium/client";
 import index from "../web/index.html";
 
 const config = loadConfig();
-const client = new TriliumClient({ baseUrl: config.triliumUrl, token: config.etapiToken });
-const repos = new RepoRegistry();
+// each repo's Trilium URL and token: its .mcp.json, else ~/.claude.json; env overrides; the global config as last fallback
+const fallback = config.triliumUrl && config.etapiToken ? { baseUrl: config.triliumUrl, token: config.etapiToken } : undefined;
+const repos = new RepoRegistry({ trilium: { env: process.env, homeDir: config.homeDir, fallback } });
 const hub = new EventHub();
 const registry = new AgentRegistry();
 
-const app = createApp({ config, client, repos, hub, registry, homeDir: config.homeDir }, { html: index });
+const app = createApp({ config, repos, hub, registry, homeDir: config.homeDir }, { html: index });
 for (const p of (process.env.FACTORY_REPOS ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
   if (!app.addRepo(p)) console.warn(`factory-dashboard: no .factory/config.json in ${p}`);
 }

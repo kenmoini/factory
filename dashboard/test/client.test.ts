@@ -1,11 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { TriliumClient, TriliumError } from "../src/trilium/client";
 
 type Call = { url: string; init: RequestInit };
-function mk(res: () => Response | Promise<Response>) {
+function mk(res: () => Response | Promise<Response>, opts: { tlsRejectUnauthorized?: boolean } = {}) {
   const calls: Call[] = [];
   const fetchImpl = (async (url: any, init: any) => { calls.push({ url: String(url), init }); return res(); }) as typeof fetch;
-  return { calls, client: new TriliumClient({ baseUrl: "http://t:37740/", token: "tok", fetchImpl }) };
+  return { calls, client: new TriliumClient({ baseUrl: "http://t:37740/", token: "tok", fetchImpl, ...opts }) };
 }
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { "content-type": "application/json" } });
 
@@ -54,5 +54,41 @@ describe("TriliumClient", () => {
     expect((await client.appInfo()).appVersion).toBe("0.63.0");
     expect((await client.getNote("n1")).noteId).toBe("n1");
     expect(calls[0].url).toContain("/etapi/app-info");
+  });
+
+  describe("TLS verification", () => {
+    const saved = process.env.FACTORY_TLS_VERIFY;
+    afterEach(() => { if (saved === undefined) delete process.env.FACTORY_TLS_VERIFY; else process.env.FACTORY_TLS_VERIFY = saved; });
+    const every = async (client: TriliumClient) => {
+      await client.search("#a");
+      await client.getNote("n1");
+      await client.getContent("n1");
+      await client.appInfo();
+    };
+    const body = () => json({ results: [], appVersion: "x", noteId: "n1" });
+
+    test("off by default: every request passes tls.rejectUnauthorized=false", async () => {
+      delete process.env.FACTORY_TLS_VERIFY;
+      const { calls, client } = mk(body);
+      await every(client);
+      expect(calls).toHaveLength(4);
+      for (const c of calls) expect((c.init as any).tls).toEqual({ rejectUnauthorized: false });
+    });
+    test("FACTORY_TLS_VERIFY=1 turns it on", async () => {
+      process.env.FACTORY_TLS_VERIFY = "1";
+      const { calls, client } = mk(body);
+      await every(client);
+      for (const c of calls) expect((c.init as any).tls).toEqual({ rejectUnauthorized: true });
+    });
+    test("the tlsRejectUnauthorized option wins over the env", async () => {
+      process.env.FACTORY_TLS_VERIFY = "1";
+      const off = mk(body, { tlsRejectUnauthorized: false });
+      await off.client.appInfo();
+      expect((off.calls[0].init as any).tls).toEqual({ rejectUnauthorized: false });
+      delete process.env.FACTORY_TLS_VERIFY;
+      const on = mk(body, { tlsRejectUnauthorized: true });
+      await on.client.appInfo();
+      expect((on.calls[0].init as any).tls).toEqual({ rejectUnauthorized: true });
+    });
   });
 });

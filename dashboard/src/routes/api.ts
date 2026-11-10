@@ -1,7 +1,7 @@
 import type { AppDeps } from "../app";
 import type { RepoEntry } from "../repos";
 import type { Poller } from "../trilium/poller";
-import { TriliumError, type EtapiNote } from "../trilium/client";
+import { NOT_CONFIGURED, TOKEN_NOT_CONFIGURED, TriliumConfigError, TriliumError, type EtapiNote, type TriliumClient } from "../trilium/client";
 import { labelsOf } from "../trilium/mapper";
 import type { TranscriptTailer } from "../agents/tailer";
 import { runInWorkstream } from "../shared/agents";
@@ -12,12 +12,17 @@ import { streamRoute } from "./stream";
 
 interface Ctx {
   deps: AppDeps; pollers: Map<string, Poller>; addRepo(path: string): RepoEntry | null;
+  /** The repo's Trilium client; throws TriliumConfigError when the repo has none (see createApp). */
+  clientFor(repoKey: string): TriliumClient;
   tailers: Map<string, TranscriptTailer>; lastTask: Map<string, HookEvent>; refresh(repoKey: string): void;
   syncRepo(repoKey: string): void; followWorkstream(repoKey: string, slug: string): void; now?: () => number;
   heartbeatMs?: number;
 }
 /** What `/api/docs/:id` needs to answer before fetching the body: title and format are fetched when unknown (reviews). */
 type DocMeta = { title?: string; format?: "html" | "markdown"; modified: string };
+/** The repo's Trilium cannot be asked: no server configured, or a placeholder token. Shown as is, never as "unreachable". */
+const configErrors = new Set<string>([NOT_CONFIGURED, TOKEN_NOT_CONFIGURED]);
+const triliumProblem = (e: RepoEntry): string | undefined => (!e.trilium ? NOT_CONFIGURED : e.trilium.placeholder ? TOKEN_NOT_CONFIGURED : undefined);
 type Handler = (req: Request, url: URL, params: string[]) => Promise<Response> | Response;
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) => Response.json(body, { status, headers });
@@ -48,11 +53,11 @@ export function createApi(ctx: Ctx) {
   const health: Handler = () => {
     let raw: string | undefined;
     for (const p of pollers.values()) { raw = p.lastError() ?? undefined; if (raw) break; }
-    const trilium: { ok: boolean; url: string; error?: string } = { ok: !raw, url: deps.config.triliumUrl };
+    const trilium: { ok: boolean; error?: string } = { ok: !raw };
     if (raw) {
       if (raw !== lastLogged) { lastLogged = raw; console.error(`factory-dashboard: trilium poll error: ${raw}`); }
       const status = raw.match(/-> (\d{3})/)?.[1];
-      trilium.error = status ? `trilium returned ${status}` : "trilium unreachable";
+      trilium.error = configErrors.has(raw) ? raw : status ? `trilium returned ${status}` : "trilium unreachable";
     } else if (pollers.size > 0 && [...pollers.values()].every((p) => !p.snapshot())) {
       // registered repos but nothing fetched yet; with no repos at all ok:true is acceptable (nothing to poll)
       trilium.ok = false;
@@ -79,6 +84,8 @@ export function createApi(ctx: Ctx) {
     const entry = resolveRepo(url.searchParams.get("repo"));
     const poller = entry && pollers.get(entry.repoPath);
     if (!entry || !poller) return json({ error: "unknown repo" }, 404);
+    const problem = triliumProblem(entry);
+    if (problem) return json({ error: problem }, 503);
     const ws = url.searchParams.get("ws");
     if (ws && ws !== poller.snapshot()?.workstream?.slug) await poller.selectWorkstream(ws, { user: true });
     else if (!poller.snapshot()) await poller.refresh();
@@ -89,11 +96,12 @@ export function createApi(ctx: Ctx) {
     return snap ? json(snap) : json({ error: "no snapshot yet" }, 503);
   };
 
-  function findTask(noteId: string): { snap: WorkstreamSnapshot; task: WorkstreamSnapshot["tasks"][number] } | undefined {
-    for (const p of pollers.values()) {
+  /** `repoKey`: the repo whose board shows the task; its Trilium client fetches the task's notes. */
+  function findTask(noteId: string): { repoKey: string; snap: WorkstreamSnapshot; task: WorkstreamSnapshot["tasks"][number] } | undefined {
+    for (const [repoKey, p] of pollers) {
       const snap = p.snapshot();
       const task = snap?.tasks.find((t) => t.id === noteId);
-      if (snap && task) return { snap, task };
+      if (snap && task) return { repoKey, snap, task };
     }
     return undefined;
   }
@@ -105,17 +113,18 @@ export function createApi(ctx: Ctx) {
    * `/api/docs/:id` serves only notes the factory shows: a snapshot's docs (validation rounds included) and reviews,
    * and the spec/approval of a task on a board. Anything else in Trilium is a 404, so the endpoint is not a read proxy.
    */
-  function scopedDoc(id: string): DocMeta | undefined {
-    for (const p of pollers.values()) {
+  function scopedDoc(id: string): { meta: DocMeta; repoKey: string } | undefined {
+    for (const [repoKey, p] of pollers) {
       const snap = p.snapshot();
       const d = snap?.docs.find((x) => x.id === id);
-      if (d) return d;
+      if (d) return { meta: d, repoKey };
       const r = snap?.reviews.find((x) => x.id === id);
-      if (r) return { modified: r.modified };
+      if (r) return { meta: { modified: r.modified }, repoKey };
     }
     for (const [taskNoteId, docs] of taskDocs) {
       const d = docs.get(id);
-      if (d && findTask(taskNoteId)) return d;
+      const hit = d && findTask(taskNoteId);
+      if (d && hit) return { meta: d, repoKey: hit.repoKey };
     }
     return undefined;
   }
@@ -123,17 +132,18 @@ export function createApi(ctx: Ctx) {
   const doc: Handler = async (req, _url, [id]) => {
     const known = scopedDoc(id);
     if (!known) return json({ error: "not found" }, 404);
-    let { title, format } = known;
-    const { modified } = known;
+    let { title, format } = known.meta;
+    const { modified } = known.meta;
     try {
       const etag = `"${modified}"`;
       if (req.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers: { ETag: etag } });
+      const client = ctx.clientFor(known.repoKey);
       if (title === undefined || format === undefined) {
-        const n = await deps.client.getNote(id);
+        const n = await client.getNote(id);
         title = n.title;
         format = formatOf(n);
       }
-      const { content } = await deps.client.getContent(id);
+      const { content } = await client.getContent(id);
       return json({ noteId: id, title, format, content, modified }, 200, { ETag: etag });
     } catch (e) {
       return upstreamError(e);
@@ -141,6 +151,7 @@ export function createApi(ctx: Ctx) {
   };
 
   function upstreamError(e: unknown): Response {
+    if (e instanceof TriliumConfigError) return json({ error: e.message }, 503);
     if (e instanceof TriliumError && e.status === 404) return json({ error: "not found" }, 404);
     console.error(`factory-dashboard: upstream error: ${e instanceof Error ? e.message : String(e)}`);
     return json({ error: "upstream error", status: e instanceof TriliumError ? e.status : undefined }, 502);
@@ -155,26 +166,27 @@ export function createApi(ctx: Ctx) {
   const task: Handler = async (_req, _url, [id]) => {
     const hit = findTask(id);
     if (!hit) return json({ error: "not found" }, 404);
-    const { snap, task: found } = hit;
+    const { repoKey, snap, task: found } = hit;
     const out: TaskDetail = {
       task: found,
       reviews: snap.reviews.filter((r) => r.taskId === found.taskId),
       runs: snap.runs.filter((r) => r.taskId === found.taskId && runInWorkstream(r, snap.workstream?.slug)),
     };
     try {
+      const client = ctx.clientFor(repoKey);
       // the task's direct #factoryDoc children, however many runs and reviews sit beside them
-      const kids = await deps.client.search("#factoryDoc", { ancestorNoteId: id, ancestorDepth: "eq1" });
+      const kids = await client.search("#factoryDoc", { ancestorNoteId: id, ancestorDepth: "eq1" });
       const spec = kids.find((k) => labelsOf(k).factoryDoc === "task-spec");
       const approval = kids
         .filter((k) => labelsOf(k).factoryDoc === "approval")
         .sort((a, b) => roundOf(b) - roundOf(a) || b.utcDateModified.localeCompare(a.utcDateModified))[0];
       const scoped = new Map<string, DocMeta>();
       if (spec) {
-        out.spec = { content: (await deps.client.getContent(spec.noteId)).content, format: formatOf(spec) };
+        out.spec = { content: (await client.getContent(spec.noteId)).content, format: formatOf(spec) };
         scoped.set(spec.noteId, { title: spec.title, format: formatOf(spec), modified: spec.utcDateModified });
       }
       if (approval) {
-        out.approval = { content: (await deps.client.getContent(approval.noteId)).content };
+        out.approval = { content: (await client.getContent(approval.noteId)).content };
         scoped.set(approval.noteId, { title: approval.title, format: formatOf(approval), modified: approval.utcDateModified });
       }
       taskDocs.set(id, scoped);

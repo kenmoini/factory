@@ -9,17 +9,33 @@ export class TriliumError extends Error {
   }
 }
 
+/** A repo's `.mcp.json` names a Trilium MCP server whose token is still the placeholder (or empty). */
+export const TOKEN_NOT_CONFIGURED = "trilium token not configured";
+/** No Trilium MCP server for a repo: not in its `.mcp.json`, `~/.claude.json`, the env or the global config. */
+export const NOT_CONFIGURED = "trilium not configured";
+
+/** No usable credentials for a repo: no request is made. The message is one of the two above. */
+export class TriliumConfigError extends Error {
+  constructor(message: typeof TOKEN_NOT_CONFIGURED | typeof NOT_CONFIGURED) {
+    super(message);
+    this.name = "TriliumConfigError";
+  }
+}
+
 export class TriliumClient {
   private baseUrl: string;
   private token: string;
   private fetchImpl: typeof fetch;
   private timeoutMs: number;
+  private tlsRejectUnauthorized: boolean;
 
-  constructor(opts: { baseUrl: string; token: string; fetchImpl?: typeof fetch; timeoutMs?: number }) {
+  /** `tlsRejectUnauthorized`: verify Trilium's TLS certificate; default FACTORY_TLS_VERIFY=1, i.e. off (self-signed certs work). */
+  constructor(opts: { baseUrl: string; token: string; fetchImpl?: typeof fetch; timeoutMs?: number; tlsRejectUnauthorized?: boolean }) {
     this.baseUrl = opts.baseUrl.replace(/\/+$/, "");
     this.token = opts.token;
     this.fetchImpl = opts.fetchImpl ?? (((...a: Parameters<typeof fetch>) => fetch(...a)) as typeof fetch);
     this.timeoutMs = opts.timeoutMs ?? 8000;
+    this.tlsRejectUnauthorized = opts.tlsRejectUnauthorized ?? process.env.FACTORY_TLS_VERIFY === "1";
   }
 
   private async request(path: string, accept: string | null): Promise<Response> {
@@ -27,7 +43,10 @@ export class TriliumClient {
     if (accept) headers.Accept = accept;
     let res: Response;
     try {
-      res = await this.fetchImpl(this.baseUrl + path, { method: "GET", headers, signal: AbortSignal.timeout(this.timeoutMs) });
+      res = await this.fetchImpl(this.baseUrl + path, {
+        method: "GET", headers, signal: AbortSignal.timeout(this.timeoutMs),
+        tls: { rejectUnauthorized: this.tlsRejectUnauthorized }, // Bun's per-request TLS option
+      });
     } catch (e) {
       throw new TriliumError(`GET ${path} failed: ${e instanceof Error ? e.message : String(e)}`);
     }

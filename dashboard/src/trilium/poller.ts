@@ -4,7 +4,11 @@ import type { Doc, LiveAgent, WorkstreamSnapshot } from "../shared/types";
 import type { EtapiNote, TriliumClient } from "./client";
 import { fingerprint, labelsOf, toAgentRun, toDoc, toMilestone, toProject, toReview, toTask, toValidationDoc, toWorkstream } from "./mapper";
 
-export interface PollerDeps { client: TriliumClient; hub: EventHub; live: () => LiveAgent[]; now?: () => Date }
+/**
+ * `client`: the repo's Trilium client, asked for on every refresh (it is rebuilt when the repo's credentials change).
+ * It throws TriliumConfigError while the repo has no usable token: the refresh then fails with that message, unfetched.
+ */
+export interface PollerDeps { client: () => TriliumClient; hub: EventHub; live: () => LiveAgent[]; now?: () => Date }
 
 export class Poller {
   private snap: WorkstreamSnapshot | null = null;
@@ -58,7 +62,7 @@ export class Poller {
 
   private async doRefresh(): Promise<boolean> {
     try {
-      const { client } = this.deps;
+      const client = this.deps.client();
       let projectNote: EtapiNote | undefined;
       if (this.projectId) projectNote = await client.getNote(this.projectId);
       else {

@@ -1,7 +1,10 @@
 # Manual verification checklist
 
-Run from the repo root with a working Trilium config (`~/.config/claude-factory/config.json`
-or `FACTORY_TRILIUM_URL` / `FACTORY_ETAPI_TOKEN`).
+Run from the repo root of a factory repo whose Trilium MCP server is registered with a real token:
+`mcpServers.trilium` in `<repo>/.mcp.json` (`"url": "<trilium>/mcp"`,
+`"headers": { "Authorization": "Bearer <ETAPI token>" }`), or the same entry in `~/.claude.json`.
+`FACTORY_TRILIUM_URL` / `FACTORY_ETAPI_TOKEN` override both. The global config holds no credentials.
+TLS certificates are not verified unless `FACTORY_TLS_VERIFY=1`, so a self-signed Trilium works.
 
 1. `bin/factory-dashboard start` -> JSON `{"running":true,"port":...,"pid":...,"url":...}`, exit 0.
 2. `bin/factory-dashboard start` again -> same pid (idempotent).
@@ -19,5 +22,10 @@ or `FACTORY_TRILIUM_URL` / `FACTORY_ETAPI_TOKEN`).
    -> the server replies `204 No Content` (empty body, so the script prints only a newline); the agent appears
    under the repo and its transcript streams.
 6. Check `~/.config/claude-factory/dashboard.log` for errors.
+   - `curl -s 127.0.0.1:<port>/api/repos` -> each repo has `"trilium": {"baseUrl": ..., "placeholder": false, "source": "project"}`
+     (or `"user"` / `"env"`) and no token anywhere.
+   - With `Bearer your-etapi-token` in `.mcp.json`: `/api/state?repo=<repo>` is `503 {"error":"trilium token not configured"}`
+     and `/api/health` has `"trilium": {"ok": false, "error": "trilium token not configured"}`. Put the real token back,
+     `curl` `/api/repos` once, and the board loads again (no restart).
 7. `bin/factory-dashboard stop` -> `{"running":false,"stopped":<pid>}`; pidfile gone.
 8. `bin/factory-dashboard status` -> `running: false`.

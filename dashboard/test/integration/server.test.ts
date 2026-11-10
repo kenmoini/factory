@@ -10,7 +10,7 @@ import { EventHub } from "../../src/hub";
 import { RepoRegistry } from "../../src/repos";
 import { columnFor } from "../../src/shared/columns";
 import type { StreamEvent, WorkstreamSnapshot } from "../../src/shared/types";
-import { TriliumClient, type EtapiNote } from "../../src/trilium/client";
+import type { EtapiNote } from "../../src/trilium/client";
 import { loadFixtureNotes, startFakeEtapi } from "./fake-etapi";
 
 const cleanups: (() => void)[] = [];
@@ -42,14 +42,20 @@ async function waitFor(cond: () => boolean, ms = 2000): Promise<void> {
   }
 }
 
-function tempRepo(config: unknown): string {
+/** A factory repo; `trilium` writes its `.mcp.json` (the dashboard's only source of Trilium URL and token besides env). */
+function tempRepo(config: unknown, trilium?: { url: string; token: string }): string {
   const dir = mkdtempSync(join(tmpdir(), "factory-repo-x-"));
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   mkdirSync(join(dir, ".factory"));
   writeConfig(dir, config);
+  if (trilium) writeMcp(dir, trilium.url, trilium.token);
   return dir;
 }
 const writeConfig = (dir: string, config: unknown) => writeFileSync(join(dir, ".factory/config.json"), JSON.stringify(config));
+/** `.mcp.json` as the plugin registers the Trilium MCP server: `<base>/mcp` with a Bearer header. */
+const writeMcp = (dir: string, url: string, token: string) =>
+  writeFileSync(join(dir, ".mcp.json"), JSON.stringify({ mcpServers: { trilium: { type: "http", url: `${url}/mcp`, headers: { Authorization: `Bearer ${token}` } } } }));
+const DEMO = { projectNoteId: "proj1", activeWorkstream: "demo", workstreams: { demo: { noteId: "ws1" } } };
 
 function tempHome(): string {
   const home = mkdtempSync(join(tmpdir(), "factory-home-"));
@@ -118,13 +124,20 @@ async function readUntil(reader: ReadableStreamDefaultReader<Uint8Array>, pred: 
   return acc;
 }
 
-function boot(fake: { url: string }, token: string, homeDir = "", opts: { heartbeatMs?: number; now?: () => number; sweepMs?: number } = {}, registry = new AgentRegistry()) {
-  const config: DashboardConfig = { triliumUrl: fake.url, etapiToken: token, port: 0, pollMs: 60000, configDir: "", homeDir };
+/**
+ * Each repo's Trilium URL and token come from its `.mcp.json` (`env` stands in for FACTORY_TRILIUM_URL /
+ * FACTORY_ETAPI_TOKEN; the process env is never read). `tls` records the TLS option of every Trilium request.
+ */
+function boot(homeDir = "", opts: { heartbeatMs?: number; now?: () => number; sweepMs?: number } = {}, registry = new AgentRegistry(), env: Record<string, string> = {}, tlsVerify = false) {
+  const config: DashboardConfig = { port: 0, pollMs: 60000, configDir: "", homeDir, tlsVerify };
   const hub = new EventHub();
-  const app = createApp({ config, client: new TriliumClient({ baseUrl: fake.url, token }), repos: new RepoRegistry(), hub, registry, homeDir }, opts);
+  const tls: unknown[] = [];
+  const fetchImpl = ((url: any, init: any) => { tls.push(init?.tls); return fetch(url, init); }) as typeof fetch;
+  const repos = new RepoRegistry({ trilium: { env, homeDir } });
+  const app = createApp({ config, repos, hub, registry, homeDir, fetchImpl }, opts);
   const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: app.fetch });
   cleanups.push(() => { app.stop(); server.stop(true); });
-  return { app, hub, base: `http://127.0.0.1:${server.port}`, port: server.port as number };
+  return { app, hub, tls, base: `http://127.0.0.1:${server.port}`, port: server.port as number };
 }
 
 let fake: ReturnType<typeof startFakeEtapi>;
@@ -132,7 +145,7 @@ let ext: ReturnType<typeof startFakeEtapi>;
 beforeAll(() => {
   repoDir = mkdtempSync(join(tmpdir(), "factory-repo-"));
   mkdirSync(join(repoDir, ".factory"));
-  writeFileSync(join(repoDir, ".factory/config.json"), JSON.stringify({ projectNoteId: "proj1", activeWorkstream: "demo", workstreams: { demo: { noteId: "ws1" } } }));
+  writeFileSync(join(repoDir, ".factory/config.json"), JSON.stringify(DEMO));
   const mock = join(repoDir, ".factory/mockups/demo");
   mkdirSync(mock, { recursive: true });
   writeFileSync(join(mock, "index.html"), "<h1>demo mockups</h1>");
@@ -144,6 +157,7 @@ beforeAll(() => {
   writeFileSync(join(repoDir, ".factory/mockups-evil/x.html"), "evil");
   fake = startFakeEtapi({ ...loadFixtureNotes(), token: TOKEN });
   ext = startFakeEtapi({ ...extendedFixtures(), token: TOKEN });
+  writeMcp(repoDir, fake.url, TOKEN);
 });
 afterAll(() => {
   cleanups.forEach((c) => c());
@@ -155,7 +169,7 @@ afterAll(() => {
 
 describe("dashboard server", () => {
   test("health, repos, state, docs, tasks", async () => {
-    const { app, base } = boot(fake, TOKEN);
+    const { app, base } = boot();
     expect(app.addRepo(repoDir)).not.toBeNull();
     const cold: any = await (await fetch(`${base}/api/health`)).json();
     expect(cold.trilium).toMatchObject({ ok: false, error: "no poller has refreshed yet" });
@@ -164,10 +178,12 @@ describe("dashboard server", () => {
     expect(health.ok).toBe(true);
     expect(health.trilium.ok).toBe(true);
     expect(health.repos).toContain(repoDir);
+    expect(health.trilium).toEqual({ ok: true });
     expect(JSON.stringify(health)).not.toContain(TOKEN);
 
     const repos: any = await (await fetch(`${base}/api/repos`)).json();
     expect(repos.repos[0].workstreams).toEqual([{ slug: "demo", noteId: "ws1" }]);
+    expect(repos.repos[0].trilium).toEqual({ baseUrl: fake.url, placeholder: false, source: "project" });
 
     const st = await fetch(`${base}/api/state?repo=${encodeURIComponent(repoDir)}`);
     expect(st.status).toBe(200);
@@ -198,7 +214,7 @@ describe("dashboard server", () => {
   });
 
   test("POST /api/repos", async () => {
-    const { base } = boot(fake, TOKEN);
+    const { base } = boot();
     const post = (body: string) => postJson(`${base}/api/repos`, body);
     expect((await post(JSON.stringify({ path: repoDir }))).status).toBe(201);
     // a cross-site form can only send text/plain, form-urlencoded or multipart: without application/json it is 415
@@ -220,7 +236,7 @@ describe("dashboard server", () => {
   });
 
   test("mockups: files from .factory/mockups; traversal, unknown slug and missing files are 404", async () => {
-    const { app, base } = boot(fake, TOKEN);
+    const { app, base } = boot();
     app.addRepo(repoDir);
     const slug = basename(repoDir);
     const m = (p: string, init?: RequestInit) => fetch(`${base}/mockups/${slug}/${p}`, init);
@@ -264,8 +280,8 @@ describe("dashboard server", () => {
   });
 
   test("wrong token reports trilium error but server stays up", async () => {
-    const { app, base } = boot(fake, WRONG);
-    app.addRepo(repoDir);
+    const { app, base } = boot();
+    app.addRepo(tempRepo(DEMO, { url: fake.url, token: WRONG }));
     await Promise.all([...app.pollers.values()].map((p) => p.refresh()));
     const res = await fetch(`${base}/api/health`);
     expect(res.status).toBe(200);
@@ -285,7 +301,7 @@ describe("dashboard server", () => {
     copyFileSync(`${fx}.jsonl`, join(dir, "agent-a1.jsonl"));
     copyFileSync(`${fx}.meta.json`, join(dir, "agent-a1.meta.json"));
 
-    const { base } = boot(fake, TOKEN, home);
+    const { base } = boot(home);
     const post = (b: unknown) => postJson(`${base}/api/events`, b);
     const q = encodeURIComponent(repoDir);
     const reposBefore = await (await fetch(`${base}/api/repos`)).json();
@@ -325,7 +341,7 @@ describe("dashboard server", () => {
     copyFileSync(`${fx}.jsonl`, join(dir, "agent-a1.jsonl"));
     copyFileSync(`${fx}.meta.json`, join(dir, "agent-a1.meta.json"));
 
-    const { app, hub, base } = boot(fake, TOKEN, home, { heartbeatMs: 50 });
+    const { app, hub, base } = boot(home, { heartbeatMs: 50 });
     app.addRepo(repoDir);
     const q = encodeURIComponent(repoDir);
     expect((await fetch(`${base}/api/stream?repo=nope`)).status).toBe(404);
@@ -361,7 +377,7 @@ describe("dashboard server", () => {
     copyFileSync(`${fx}.jsonl`, join(dir, "agent-a7.jsonl"));
     copyFileSync(`${fx}.meta.json`, join(dir, "agent-a7.meta.json")); // description "builder T-001 [task:t001]"
 
-    const { app, base } = boot(fake, TOKEN, home);
+    const { app, base } = boot(home);
     app.addRepo(repoDir);
     const ac = new AbortController();
     const res = await fetch(`${base}/api/stream?repo=${encodeURIComponent(repoDir)}`, { signal: ac.signal });
@@ -387,7 +403,7 @@ describe("dashboard server", () => {
     copyFileSync(join(import.meta.dir, "../fixtures/transcripts/agent-sample.jsonl"), join(dir, "agent-a9.jsonl"));
     let t = Date.now();
     const registry = new AgentRegistry({ recentTtlMs: 1000, now: () => t });
-    const { app, base } = boot(fake, TOKEN, home, {}, registry);
+    const { app, base } = boot(home, {}, registry);
     const post = (b: unknown) => postJson(`${base}/api/events`, b);
     await post({ event: "subagent-start", project: repoDir, payload: { agent_id: "a9", agent_type: "x", session_id: "s1", cwd: repoDir } });
     await Bun.sleep(100);
@@ -404,7 +420,7 @@ describe("dashboard server", () => {
   });
 
   test("first request with unknown ws and no snapshot yields 404", async () => {
-    const { app, base } = boot(fake, TOKEN);
+    const { app, base } = boot();
     app.addRepo(repoDir);
     const res = await fetch(`${base}/api/state?repo=${encodeURIComponent(repoDir)}&ws=nope`);
     expect(res.status).toBe(404);
@@ -412,7 +428,7 @@ describe("dashboard server", () => {
   });
 
   test("host guard: a foreign or missing Host is 403 on every route, incl. SSE and mockups", async () => {
-    const { app, base, port } = boot(fake, TOKEN);
+    const { app, base, port } = boot();
     app.addRepo(repoDir);
     const q = encodeURIComponent(repoDir);
     const slug = basename(repoDir);
@@ -445,7 +461,7 @@ describe("dashboard server", () => {
   });
 
   test("docs are scoped to the snapshot: docs, rounds, reviews and the task spec/approval /api/tasks returned", async () => {
-    const { app, base } = boot(fake, TOKEN);
+    const { app, base } = boot();
     app.addRepo(repoDir);
     await Promise.all([...app.pollers.values()].map((p) => p.refresh()));
     expect((await fetch(`${base}/api/docs/d2`)).status).toBe(200);
@@ -465,8 +481,8 @@ describe("dashboard server", () => {
   });
 
   test("approval: the highest #round among the task's direct #factoryDoc children, past 20 children", async () => {
-    const { app, base } = boot(ext, TOKEN);
-    app.addRepo(repoDir);
+    const { app, base } = boot();
+    app.addRepo(tempRepo(DEMO, { url: ext.url, token: TOKEN }));
     await Promise.all([...app.pollers.values()].map((p) => p.refresh()));
     const t: any = await (await fetch(`${base}/api/tasks/t003`)).json();
     expect(t.spec?.content).toBe("<p>T-003 spec</p>");
@@ -483,8 +499,8 @@ describe("dashboard server", () => {
   });
 
   test("runs are joined to a task by #taskId within the workstream on screen (same T-001 in two workstreams)", async () => {
-    const repo = tempRepo({ projectNoteId: "proj1", activeWorkstream: "demo", workstreams: { demo: { noteId: "ws1" }, next: { noteId: "ws2" } } });
-    const { app, base } = boot(ext, TOKEN);
+    const repo = tempRepo({ projectNoteId: "proj1", activeWorkstream: "demo", workstreams: { demo: { noteId: "ws1" }, next: { noteId: "ws2" } } }, { url: ext.url, token: TOKEN });
+    const { app, base } = boot();
     app.addRepo(repo);
     const q = encodeURIComponent(repo);
     const demo = (await (await fetch(`${base}/api/state?repo=${q}`)).json()) as WorkstreamSnapshot;
@@ -497,8 +513,8 @@ describe("dashboard server", () => {
   });
 
   test("config is re-read on events and GET /api/repos: a second workstream appears and the poller follows activeWorkstream until the user picks one", async () => {
-    const repo = tempRepo({ projectNoteId: "proj1", activeWorkstream: "demo", workstreams: { demo: { noteId: "ws1" } } });
-    const { app, base } = boot(ext, TOKEN);
+    const repo = tempRepo(DEMO, { url: ext.url, token: TOKEN });
+    const { app, base } = boot();
     app.addRepo(repo);
     const poller = app.pollers.get(repo)!;
     await poller.refresh();
@@ -532,8 +548,8 @@ describe("dashboard server", () => {
   });
 
   test("the envelope's workstream moves a poller the user has not pointed elsewhere", async () => {
-    const repo = tempRepo({ projectNoteId: "proj1", activeWorkstream: "demo", workstreams: { demo: { noteId: "ws1" }, next: { noteId: "ws2" } } });
-    const { app, base } = boot(ext, TOKEN);
+    const repo = tempRepo({ projectNoteId: "proj1", activeWorkstream: "demo", workstreams: { demo: { noteId: "ws1" }, next: { noteId: "ws2" } } }, { url: ext.url, token: TOKEN });
+    const { app, base } = boot();
     app.addRepo(repo);
     const poller = app.pollers.get(repo)!;
     await poller.refresh();
@@ -547,7 +563,7 @@ describe("dashboard server", () => {
     const worktree = join(repoDir, ".factory/worktrees/demo");
     placeTranscript(home, cwdSlug(repoDir), "s1", "c1", { agentType: "factory:codebase-examiner", description: "examine [task:none]" });
     const elsewhere = placeTranscript(home, "-elsewhere", "s2", "c2");
-    const { base } = boot(fake, TOKEN, home);
+    const { base } = boot(home);
     const q = encodeURIComponent(repoDir);
     // c1: no transcript_path; the transcript sits under the project's slug while the subagent's cwd is a worktree
     expect((await postJson(`${base}/api/events`, { event: "subagent-start", project: repoDir, payload: { agent_id: "c1", session_id: "s1", cwd: worktree, description: "examine [task:none]" } })).status).toBe(204);
@@ -568,7 +584,7 @@ describe("dashboard server", () => {
 
   test("subagent-stop with agent_transcript_path replaces a tailer that never found the file or tails another one", async () => {
     const home = tempHome();
-    const { app, base } = boot(fake, TOKEN, home);
+    const { app, base } = boot(home);
     const post = (b: unknown) => postJson(`${base}/api/events`, b);
     const steps = async (id: string) => ((await (await fetch(`${base}/api/agents/${id}/steps`)).json()) as any);
 
@@ -604,7 +620,7 @@ describe("dashboard server", () => {
   });
 
   test("session-start: a new session (startup, or no source and another session_id) ends the repo's other sessions' live agents", async () => {
-    const { hub, base } = boot(fake, TOKEN);
+    const { hub, base } = boot();
     const stops: string[] = [];
     hub.subscribe(repoDir, (e: StreamEvent) => { if (e.type === "agent" && e.data.op === "stop") stops.push(e.data.agent.agentId); });
     const post = (b: unknown) => postJson(`${base}/api/events`, b);
@@ -628,7 +644,7 @@ describe("dashboard server", () => {
     const t0 = Date.now();
     let t = t0;
     const now = () => t;
-    const { app, hub, base } = boot(fake, TOKEN, home, { now, sweepMs: 3_600_000 }, new AgentRegistry({ now }));
+    const { app, hub, base } = boot(home, { now, sweepMs: 3_600_000 }, new AgentRegistry({ now }));
     const stops: string[] = [];
     hub.subscribe(repoDir, (e: StreamEvent) => { if (e.type === "agent" && e.data.op === "stop") stops.push(e.data.agent.agentId); });
     const quiet = placeTranscript(home, cwdSlug(repoDir), "s1", "i1");
@@ -652,17 +668,105 @@ describe("dashboard server", () => {
     expect(stops.sort()).toEqual(["i1", "i2", "i3"]);
   });
 
+  test("per-repo credentials: each repo polls the Trilium its .mcp.json names; docs and tasks use the owning repo's client", async () => {
+    const { app, base } = boot();
+    const other = tempRepo({ projectNoteId: "proj1", activeWorkstream: "next", workstreams: { demo: { noteId: "ws1" }, next: { noteId: "ws2" } } }, { url: ext.url, token: TOKEN });
+    app.addRepo(repoDir);
+    app.addRepo(other);
+    // what each board shows tells the servers apart: only ext has workstream `next` (tn1) and the extra runs
+    const demo = await fetch(`${base}/api/state?repo=${encodeURIComponent(repoDir)}`);
+    expect(demo.status).toBe(200);
+    expect(((await demo.json()) as WorkstreamSnapshot).runs.map((r) => r.id)).not.toContain("runDemo");
+    const next = await fetch(`${base}/api/state?repo=${encodeURIComponent(other)}`);
+    expect(next.status).toBe(200);
+    const nextSnap = (await next.json()) as WorkstreamSnapshot;
+    expect(nextSnap.tasks.map((t) => t.id)).toEqual(["tn1"]);
+    expect(nextSnap.runs.map((r) => r.id)).toContain("runDemo");
+
+    const listed: any = await (await fetch(`${base}/api/repos`)).json();
+    const byPath = Object.fromEntries(listed.repos.map((r: any) => [r.repoPath, r.trilium]));
+    expect(byPath).toEqual({
+      [repoDir]: { baseUrl: fake.url, placeholder: false, source: "project" },
+      [other]: { baseUrl: ext.url, placeholder: false, source: "project" },
+    });
+
+    // tn1 is only on the ext repo's board: its detail is fetched from ext, never from fake
+    expect((await fetch(`${base}/api/tasks/tn1`)).status).toBe(200);
+    expect(ext.calls).toContain("/etapi/notes?search=%23factoryDoc&ancestorNoteId=tn1&ancestorDepth=eq1");
+    expect(fake.calls.some((c) => c.includes("tn1"))).toBe(false);
+  });
+
+  test("placeholder token: the repo is registered, its state is 503, health names the error, Trilium gets no request; a real token is picked up", async () => {
+    const own = startFakeEtapi({ ...loadFixtureNotes(), token: TOKEN }); // this repo's Trilium alone: its calls are this test's
+    cleanups.push(() => own.stop());
+    const { app, base } = boot();
+    const repo = tempRepo(DEMO, { url: own.url, token: "your-etapi-token" });
+    const q = encodeURIComponent(repo);
+    const added = await postJson(`${base}/api/repos`, { path: repo });
+    expect(added.status).toBe(201);
+    expect(((await added.json()) as any).trilium).toEqual({ baseUrl: own.url, placeholder: true, source: "project" });
+
+    const st = await fetch(`${base}/api/state?repo=${q}`);
+    expect(st.status).toBe(503);
+    expect(await st.json()).toEqual({ error: "trilium token not configured" });
+    expect(app.pollers.get(repo)!.lastError()).toBe("trilium token not configured");
+    expect(((await (await fetch(`${base}/api/health`)).json()) as any).trilium).toEqual({ ok: false, error: "trilium token not configured" });
+    expect(own.calls).toEqual([]);
+
+    // the user pastes the real token; the next GET /api/repos (the web app re-reads it every 30 s) picks it up
+    writeMcp(repo, own.url, TOKEN);
+    const listed: any = await (await fetch(`${base}/api/repos`)).json();
+    expect(listed.repos[0].trilium).toEqual({ baseUrl: own.url, placeholder: false, source: "project" });
+    expect((await fetch(`${base}/api/state?repo=${q}`)).status).toBe(200);
+    expect(own.calls.length).toBeGreaterThan(0);
+    expect(((await (await fetch(`${base}/api/health`)).json()) as any).trilium).toEqual({ ok: true });
+
+    // a repo with no trilium server anywhere is registered too, and says so
+    const bare = tempRepo(DEMO);
+    expect(app.addRepo(bare)!.trilium).toBeUndefined();
+    const b = await fetch(`${base}/api/state?repo=${encodeURIComponent(bare)}`);
+    expect(b.status).toBe(503);
+    expect(await b.json()).toEqual({ error: "trilium not configured" });
+    expect(((await (await fetch(`${base}/api/health`)).json()) as any).trilium).toEqual({ ok: false, error: "trilium not configured" });
+  });
+
+  test("env FACTORY_TRILIUM_URL / FACTORY_ETAPI_TOKEN still win over the repo's .mcp.json", async () => {
+    const repo = tempRepo(DEMO, { url: "http://127.0.0.1:9", token: WRONG });
+    const { app, base } = boot("", {}, new AgentRegistry(), { FACTORY_TRILIUM_URL: fake.url, FACTORY_ETAPI_TOKEN: TOKEN });
+    expect(app.addRepo(repo)!.trilium).toEqual({ baseUrl: fake.url, placeholder: false, source: "env" });
+    const st = await fetch(`${base}/api/state?repo=${encodeURIComponent(repo)}`);
+    expect(st.status).toBe(200);
+    expect(((await st.json()) as WorkstreamSnapshot).tasks).toHaveLength(5);
+  });
+
+  test("TLS verification: off by default on every Trilium request, on with config.tlsVerify", async () => {
+    const off = boot();
+    off.app.addRepo(repoDir);
+    expect((await fetch(`${off.base}/api/state?repo=${encodeURIComponent(repoDir)}`)).status).toBe(200);
+    expect((await fetch(`${off.base}/api/tasks/t002`)).status).toBe(200);
+    expect(off.tls.length).toBeGreaterThan(5);
+    expect(off.tls.every((t) => JSON.stringify(t) === JSON.stringify({ rejectUnauthorized: false }))).toBe(true);
+    const on = boot("", {}, new AgentRegistry(), {}, true);
+    on.app.addRepo(repoDir);
+    expect((await fetch(`${on.base}/api/state?repo=${encodeURIComponent(repoDir)}`)).status).toBe(200);
+    expect(on.tls.length).toBeGreaterThan(5);
+    expect(on.tls.every((t) => JSON.stringify(t) === JSON.stringify({ rejectUnauthorized: true }))).toBe(true);
+  });
+
   test("token canary: no response body or header, and no console line of this suite, carries the ETAPI token", async () => {
     const home = tempHome();
     placeTranscript(home, cwdSlug(repoDir), "s1", "k1");
-    const { app, base } = boot(fake, TOKEN, home);
+    const { app, base } = boot(home);
     app.addRepo(repoDir);
     await Promise.all([...app.pollers.values()].map((p) => p.refresh()));
-    const bad = boot(fake, WRONG);
-    bad.app.addRepo(repoDir);
+    const wrongRepo = tempRepo(DEMO, { url: fake.url, token: WRONG });
+    const bad = boot();
+    bad.app.addRepo(wrongRepo);
     await Promise.all([...bad.app.pollers.values()].map((p) => p.refresh()));
-    const q = encodeURIComponent(repoDir);
-    const slug = basename(repoDir);
+    // a placeholder repo and an env-token boot (FACTORY_ETAPI_TOKEN) answer without the token too
+    const envBoot = boot("", {}, new AgentRegistry(), { FACTORY_TRILIUM_URL: fake.url, FACTORY_ETAPI_TOKEN: TOKEN });
+    const envRepo = tempRepo(DEMO, { url: "http://127.0.0.1:9", token: "your-etapi-token" });
+    envBoot.app.addRepo(envRepo);
     const seen: string[] = [];
     const check = async (label: string, res: Response, body?: string) => {
       const text = body ?? (await res.text());
@@ -671,7 +775,11 @@ describe("dashboard server", () => {
       expect(all).not.toContain(TOKEN);
       expect(all).not.toContain(WRONG);
     };
-    for (const b of [base, bad.base]) {
+    for (const [b, repo] of [[base, repoDir], [bad.base, wrongRepo], [envBoot.base, envRepo]]) {
+      const q = encodeURIComponent(repo);
+      const slug = basename(repo);
+      const listed: any = await (await fetch(`${b}/api/repos`)).json();
+      expect(listed.repos.map((r: any) => Object.keys(r.trilium).sort())).toEqual([["baseUrl", "placeholder", "source"]]);
       for (const path of ["/api/health", "/api/repos", `/api/state?repo=${q}`, `/api/state?repo=${q}&ws=nope`, "/api/state?repo=nope", "/api/docs/d2", "/api/docs/r1",
         "/api/docs/proj1", "/api/tasks/t002", "/api/tasks/zzz", `/api/agents?repo=${q}`, "/api/agents?repo=nope", "/api/agents/k1/steps", "/api/agents/zz/steps",
         `/mockups/${slug}/demo/`, `/mockups/${slug}/demo/style.css`, `/mockups/${slug}/missing`, "/nope", "/api/stream?repo=nope"]) {
@@ -679,12 +787,12 @@ describe("dashboard server", () => {
       }
       await check("PUT /api/health", await fetch(`${b}/api/health`, { method: "PUT" }));
       await check("GET evil host", await fetch(`${b}/api/health`, { headers: { Host: "evil.example" } }));
-      await check("POST /api/repos", await postJson(`${b}/api/repos`, { path: repoDir }));
+      await check("POST /api/repos", await postJson(`${b}/api/repos`, { path: repo }));
       await check("POST /api/repos 404", await postJson(`${b}/api/repos`, { path: "/nonexistent-xyz" }));
       await check("POST /api/repos 400", await postJson(`${b}/api/repos`, "{"));
       await check("POST /api/repos 415", await fetch(`${b}/api/repos`, { method: "POST", body: "{}" }));
-      await check("POST /api/events start", await postJson(`${b}/api/events`, { event: "subagent-start", project: repoDir, payload: { agent_id: "k1", session_id: "s1", cwd: repoDir } }));
-      await check("POST /api/events stop", await postJson(`${b}/api/events`, { event: "subagent-stop", project: repoDir, payload: { agent_id: "k1" } }));
+      await check("POST /api/events start", await postJson(`${b}/api/events`, { event: "subagent-start", project: repo, payload: { agent_id: "k1", session_id: "s1", cwd: repo } }));
+      await check("POST /api/events stop", await postJson(`${b}/api/events`, { event: "subagent-stop", project: repo, payload: { agent_id: "k1" } }));
       await check("POST /api/events 400", await postJson(`${b}/api/events`, {}));
       await check("POST /api/events 415", await fetch(`${b}/api/events`, { method: "POST", body: "{}" }));
       const ac = new AbortController();
@@ -693,7 +801,7 @@ describe("dashboard server", () => {
       ac.abort();
       await check("GET /api/stream", sse, text);
     }
-    expect(seen.length).toBeGreaterThan(50);
+    expect(seen.length).toBeGreaterThan(80);
     // the whole suite's console output (this test runs last)
     expect(logged.length).toBeGreaterThan(0);
     for (const line of logged) {

@@ -111,6 +111,8 @@ A local web app (Bun, under `dashboard/`) shows each factory repo's workstream: 
 
 - `factory-dashboard start [--port N] [--open]` starts it in the background (default port 7777, or `dashboardPort` in the global config) and registers the repo it is run from. On first run it installs the dashboard's dependencies (`bun install --frozen-lockfile` in `dashboard/`, output in `dashboard.log`).
 - `factory-dashboard status | open | stop | restart`. The pidfile and `dashboard.log` live in the global config directory.
+- Trilium URL and ETAPI token are per repo, read from the Trilium MCP server Claude Code uses: `mcpServers.trilium` in `<repo>/.mcp.json` (`url` `<trilium>/mcp`, `headers.Authorization` `Bearer <token>`), else in `~/.claude.json` (user scope). `${VAR}` references in it are expanded from the dashboard's environment, as Claude Code does; `FACTORY_TRILIUM_URL` / `FACTORY_ETAPI_TOKEN` override both. Changes are picked up without a restart. A placeholder token (`your-etapi-token`, or empty) keeps the repo listed but not polled: its board answers `trilium token not configured` until the real token is in place. `/api/repos` shows each repo's Trilium URL and where it came from, never the token.
+- TLS certificates are not verified (a self-signed Trilium works); set `FACTORY_TLS_VERIFY=1` before `factory-dashboard start` to verify them.
 - It listens on 127.0.0.1 only, answers only requests addressed to `127.0.0.1`, `localhost` or `[::1]` on its port, accepts POSTs only as `application/json`, and serves only the Trilium notes the factory shows.
 
 ## Known caveats

@@ -4,13 +4,13 @@ import { join } from "node:path";
 import { EventHub } from "../src/hub";
 import { RepoRegistry } from "../src/repos";
 import type { StreamEvent } from "../src/shared/types";
-import { TriliumError, type EtapiNote, type TriliumClient } from "../src/trilium/client";
+import { TOKEN_NOT_CONFIGURED, TriliumConfigError, TriliumError, type EtapiNote, type TriliumClient } from "../src/trilium/client";
 import { Poller } from "../src/trilium/poller";
 
 const load = (f: string): EtapiNote[] => JSON.parse(readFileSync(join(import.meta.dir, "fixtures/etapi", `${f}.json`), "utf8")).results;
 
 function setup(projectNoteId?: string) {
-  const state = { bump: 0, vbump: 0, fail: false, calls: [] as { q: string; opts: any }[], getNotes: 0 };
+  const state = { bump: 0, vbump: 0, fail: false, unconfigured: false, calls: [] as { q: string; opts: any }[], getNotes: 0 };
   const byLabel: Record<string, () => EtapiNote[]> = {
     "#factoryProject": () => load("project"),
     "#factoryWorkstream": () => load("workstreams"),
@@ -36,7 +36,9 @@ function setup(projectNoteId?: string) {
   hub.subscribe("/r/app", (e) => events.push(e));
   const reg = new RepoRegistry({ readConfig: (p) => ({ repoPath: p, repoSlug: "app", projectNoteId, workstreams: {} }) });
   const repo = reg.register("/r/app")!;
-  const poller = new Poller(repo, { client, hub, live: () => [] }, { intervalMs: 20 });
+  // the repo's client, as createApp's clientFor hands it out: it throws while the repo's token is a placeholder
+  const clientFor = () => { if (state.unconfigured) throw new TriliumConfigError(TOKEN_NOT_CONFIGURED); return client; };
+  const poller = new Poller(repo, { client: clientFor, hub, live: () => [] }, { intervalMs: 20 });
   return { state, events, poller };
 }
 
@@ -60,6 +62,20 @@ describe("Poller", () => {
     state.fail = false;
     await poller.refresh();
     expect(poller.lastError()).toBeNull();
+  });
+
+  test("placeholder token: lastError 'trilium token not configured', no request; a later real token polls again", async () => {
+    const { state, events, poller } = setup("proj1");
+    state.unconfigured = true;
+    expect(await poller.refresh()).toBe(false);
+    expect(poller.lastError()).toBe("trilium token not configured");
+    expect(state.calls).toHaveLength(0);
+    expect(state.getNotes).toBe(0);
+    expect(poller.snapshot()).toBeNull();
+    state.unconfigured = false;
+    expect(await poller.refresh()).toBe(true);
+    expect(poller.lastError()).toBeNull();
+    expect(events).toHaveLength(1);
   });
 
   test("agent runs searched under the project; project docs at depth eq1", async () => {
