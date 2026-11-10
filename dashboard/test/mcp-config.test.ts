@@ -36,6 +36,18 @@ describe("readTriliumMcp", () => {
     expect(readTriliumMcp(repo, {}, home)).toMatchObject({ token: "lower" });
   });
 
+  test("the base URL never carries secrets: userinfo, query string and fragment are dropped", () => {
+    const TOK = "url-secret-7e2a";
+    project(server(`https://u:${TOK}@host/mcp?token=x`, "Bearer t"));
+    expect(readTriliumMcp(repo, {}, home)?.baseUrl).toBe("https://host");
+    project(server(`https://host:8443/trilium/mcp/?k=${TOK}#frag`, "Bearer t"));
+    expect(readTriliumMcp(repo, {}, home)?.baseUrl).toBe("https://host:8443/trilium");
+    expect(readTriliumMcp(repo, { FACTORY_TRILIUM_URL: `http://a:${TOK}@env:1/?q=${TOK}`, FACTORY_ETAPI_TOKEN: "e" }, home)?.baseUrl).toBe("http://env:1");
+    // not an http(s) URL: no usable entry
+    project(server("not a url", "Bearer t"));
+    expect(readTriliumMcp(repo, {}, home)).toBeNull();
+  });
+
   test("the Authorization header is matched case-insensitively", () => {
     project({ type: "http", url: "http://h/mcp", headers: { authorization: "Bearer t1" } });
     expect(readTriliumMcp(repo, {}, home)?.token).toBe("t1");
@@ -91,13 +103,13 @@ describe("readTriliumMcp", () => {
     expect(readTriliumMcp(repo, {}, "")).toBeNull();
   });
 
-  test("env FACTORY_TRILIUM_URL / FACTORY_ETAPI_TOKEN win over the files, each on its own", () => {
+  test("env FACTORY_TRILIUM_URL / FACTORY_ETAPI_TOKEN win over the files, each on its own; any override reports source env", () => {
     project(server("http://proj/mcp", "Bearer your-etapi-token"));
     const both = { FACTORY_TRILIUM_URL: "http://env:1/", FACTORY_ETAPI_TOKEN: "etok" };
     expect(readTriliumMcp(repo, both, home)).toEqual({ baseUrl: "http://env:1", token: "etok", placeholder: false, source: "env" });
-    // the token alone overrides a placeholder; the URL stays the project's
-    expect(readTriliumMcp(repo, { FACTORY_ETAPI_TOKEN: "etok" }, home)).toEqual({ baseUrl: "http://proj", token: "etok", placeholder: false, source: "project" });
-    expect(readTriliumMcp(repo, { FACTORY_TRILIUM_URL: "http://env" }, home)).toMatchObject({ baseUrl: "http://env", placeholder: true, source: "project" });
+    // the token alone overrides a placeholder; the URL stays the project's (source env, as the plugin's lib reports it)
+    expect(readTriliumMcp(repo, { FACTORY_ETAPI_TOKEN: "etok" }, home)).toEqual({ baseUrl: "http://proj", token: "etok", placeholder: false, source: "env" });
+    expect(readTriliumMcp(repo, { FACTORY_TRILIUM_URL: "http://env" }, home)).toMatchObject({ baseUrl: "http://env", placeholder: true, source: "env" });
     // env alone, no files
     rmSync(join(repo, ".mcp.json"));
     expect(readTriliumMcp(repo, both, "")).toMatchObject({ source: "env", token: "etok" });

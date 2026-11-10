@@ -143,15 +143,19 @@ async function start(): Promise<number> {
   }
   mkdirSync(configDir, { recursive: true });
   const logFd = openSync(logFile, "a");
+  // Trilium often runs on a self-signed certificate: TLS verification is off unless FACTORY_TLS_VERIFY=1 (the clients
+  // also pass Bun's per-request `tls` option; this covers any other request the server makes). With verification on,
+  // an inherited NODE_TLS_REJECT_UNAUTHORIZED (e.g. "0" from Claude Code's settings env) is dropped.
+  const serverEnv: Record<string, string | undefined> = { ...env, FACTORY_DASHBOARD_PORT: String(port) };
+  if (config.tlsVerify) delete serverEnv.NODE_TLS_REJECT_UNAUTHORIZED;
+  else serverEnv.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   let proc: ReturnType<typeof Bun.spawn>;
   try {
     proc = Bun.spawn([process.execPath, serverPath], {
       cwd: dashboardDir,
       detached: true,
       stdio: ["ignore", logFd, logFd],
-      // Trilium often runs on a self-signed certificate: TLS verification is off unless FACTORY_TLS_VERIFY=1
-      // (the clients also pass Bun's per-request `tls` option; this covers any other request the server makes)
-      env: { ...env, FACTORY_DASHBOARD_PORT: String(port), ...(config.tlsVerify ? {} : { NODE_TLS_REJECT_UNAUTHORIZED: "0" }) },
+      env: serverEnv,
     });
   } finally { closeSync(logFd); }
   proc.unref();

@@ -145,7 +145,7 @@ describe("daemon lifecycle", () => {
     }
   }, 60000);
 
-  test("the server is spawned with NODE_TLS_REJECT_UNAUTHORIZED=0 unless FACTORY_TLS_VERIFY=1", async () => {
+  test("the server is spawned with NODE_TLS_REJECT_UNAUTHORIZED=0 unless FACTORY_TLS_VERIFY=1, which removes an inherited one", async () => {
     // a copy of the daemon whose server.ts is a stub reporting the TLS env it was started with
     const root = mkdtempSync(join(tmpdir(), "factory-tls-"));
     const dash = join(root, "dashboard");
@@ -164,7 +164,8 @@ describe("daemon lifecycle", () => {
       expect(await tlsEnv()).toBe("0");
       expect(run("stop", undefined, script).code).toBe(0);
 
-      env = { ...saved, FACTORY_CONFIG_DIR: cfg, FACTORY_TLS_VERIFY: "1" };
+      // verification on: an inherited NODE_TLS_REJECT_UNAUTHORIZED=0 (e.g. from Claude Code's settings env) is dropped
+      env = { ...saved, FACTORY_CONFIG_DIR: cfg, FACTORY_TLS_VERIFY: "1", NODE_TLS_REJECT_UNAUTHORIZED: "0" };
       expect(run("start", undefined, script).json.running).toBe(true);
       expect(await tlsEnv()).toBeNull();
       expect(run("stop", undefined, script).code).toBe(0);

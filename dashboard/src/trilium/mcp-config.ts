@@ -14,8 +14,16 @@ export const PLACEHOLDER_TOKEN = "your-etapi-token";
 /** An empty token or the template's placeholder: the server is registered, but not usable. */
 export const isPlaceholderToken = (token: string): boolean => token.trim() === "" || token.trim() === PLACEHOLDER_TOKEN;
 
-/** `https://host/mcp/` → `https://host`: the ETAPI base is the MCP URL without its `/mcp` path. */
-const baseOf = (url: string): string => url.trim().replace(/\/+$/, "").replace(/\/mcp$/, "").replace(/\/+$/, "");
+/**
+ * `https://host/mcp/` → `https://host`: the ETAPI base is the MCP URL without its `/mcp` path. Only origin and path are
+ * kept, so userinfo, query string and fragment (which may carry secrets) never reach `/api/repos`. "" when not http(s).
+ */
+function baseOf(url: string): string {
+  let u: URL;
+  try { u = new URL(url.trim()); } catch { return ""; }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+  return (u.origin + u.pathname).replace(/\/+$/, "").replace(/\/mcp$/, "").replace(/\/+$/, "");
+}
 
 /** `${VAR}` and `${VAR:-default}`, expanded from `env` as Claude Code expands them in `.mcp.json`. */
 const expand = (s: string, env: Env): string =>
@@ -42,7 +50,8 @@ function fromFile(path: string, env: Env): { baseUrl: string; token: string } | 
 /**
  * The Trilium a repo's Claude Code sessions talk to: `<repoDir>/.mcp.json`, else `<homeDir>/.claude.json` (skipped when
  * `homeDir` is empty); FACTORY_TRILIUM_URL and FACTORY_ETAPI_TOKEN in `env` override the URL and the token each on its
- * own. A project entry with a placeholder token is returned as such (no fall-through: Claude Code uses it too).
+ * own, and any override reports source "env" (as the plugin's lib/trilium-config.ts does). A project entry with a
+ * placeholder token is returned as such (no fall-through: Claude Code uses it too).
  * null when no URL and token can be put together.
  */
 export function readTriliumMcp(repoDir: string, env: Env, homeDir: string): TriliumMcp | null {
@@ -54,6 +63,6 @@ export function readTriliumMcp(repoDir: string, env: Env, homeDir: string): Tril
   const baseUrl = envUrl ? baseOf(envUrl) : found?.baseUrl;
   const token = envToken ?? found?.token;
   if (!baseUrl || token === undefined) return null;
-  const source: TriliumSource = envUrl && envToken ? "env" : found!.source;
+  const source: TriliumSource = envUrl || envToken ? "env" : found!.source;
   return { baseUrl, token, placeholder: isPlaceholderToken(token), source };
 }
