@@ -3,8 +3,14 @@ import type { RepoEntry } from "../repos";
 import type { Poller } from "../trilium/poller";
 import { TriliumError, type EtapiNote } from "../trilium/client";
 import { labelsOf } from "../trilium/mapper";
+import type { TranscriptTailer } from "../agents/tailer";
+import type { HookEvent } from "../shared/types";
+import { handleEvent } from "./events";
 
-interface Ctx { deps: AppDeps; pollers: Map<string, Poller>; addRepo(path: string): RepoEntry | null }
+interface Ctx {
+  deps: AppDeps; pollers: Map<string, Poller>; addRepo(path: string): RepoEntry | null;
+  tailers: Map<string, TranscriptTailer>; lastTask: Map<string, HookEvent>; refresh(repoKey: string): void;
+}
 type Handler = (req: Request, url: URL, params: string[]) => Promise<Response> | Response;
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) => Response.json(body, { status, headers });
@@ -110,12 +116,42 @@ export function createApi(ctx: Ctx) {
     return json(out);
   };
 
+  const events: Handler = async (req) => {
+    let body: unknown;
+    try { body = await req.json(); } catch { return json({ error: "invalid JSON body" }, 400); }
+    return handleEvent(body, {
+      repos: deps.repos, registry: deps.registry, hub: deps.hub, tailers: ctx.tailers,
+      homeDir: deps.homeDir, addRepo: ctx.addRepo, refresh: ctx.refresh, lastTask: ctx.lastTask,
+    });
+  };
+
+  const agents: Handler = (_req, url) => {
+    const param = url.searchParams.get("repo");
+    const entry = resolveRepo(param);
+    if (param && !entry) return json({ error: "unknown repo" }, 404);
+    const out: { live: unknown[]; recent: unknown[]; lastTaskEvent?: HookEvent } = deps.registry.list(entry?.repoPath);
+    const last = entry && ctx.lastTask.get(entry.repoPath);
+    if (last) out.lastTaskEvent = last;
+    return json(out);
+  };
+
+  const agentSteps: Handler = (_req, url, [id]) => {
+    const agent = deps.registry.get(id);
+    if (!agent) return json({ error: "unknown agent" }, 404);
+    const after = Number(url.searchParams.get("after") ?? -1);
+    const steps = (ctx.tailers.get(id)?.readAll() ?? []).filter((s) => s.seq > (Number.isFinite(after) ? after : -1));
+    return json({ steps, finished: !!agent.finishedAt });
+  };
+
   const routes: { method: string; re: RegExp; handler: Handler }[] = [
     { method: "GET", re: /^\/api\/health$/, handler: health },
     { method: "GET", re: /^\/api\/repos$/, handler: listRepos },
     { method: "POST", re: /^\/api\/repos$/, handler: addRepoRoute },
     { method: "GET", re: /^\/api\/state$/, handler: state },
     { method: "GET", re: /^\/api\/docs\/([^/]+)$/, handler: doc },
+    { method: "POST", re: /^\/api\/events$/, handler: events },
+    { method: "GET", re: /^\/api\/agents$/, handler: agents },
+    { method: "GET", re: /^\/api\/agents\/([^/]+)\/steps$/, handler: agentSteps },
     { method: "GET", re: /^\/api\/tasks\/([^/]+)$/, handler: task },
   ];
 

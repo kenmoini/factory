@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { AgentRegistry } from "../../src/agents/registry";
+import { cwdSlug } from "../../src/agents/transcript-path";
 import { createApp } from "../../src/app";
 import type { DashboardConfig } from "../../src/config";
 import { EventHub } from "../../src/hub";
@@ -11,13 +13,12 @@ import type { WorkstreamSnapshot } from "../../src/shared/types";
 import { TriliumClient } from "../../src/trilium/client";
 import { loadFixtureNotes, startFakeEtapi } from "./fake-etapi";
 
-const registry = { list: () => ({ live: [], recent: [] }) };
 const cleanups: (() => void)[] = [];
 let repoDir: string;
 
-function boot(fake: { url: string }, token: string) {
-  const config: DashboardConfig = { triliumUrl: fake.url, etapiToken: token, port: 0, pollMs: 60000, configDir: "", homeDir: "" };
-  const app = createApp({ config, client: new TriliumClient({ baseUrl: fake.url, token }), repos: new RepoRegistry(), hub: new EventHub(), registry, homeDir: "" });
+function boot(fake: { url: string }, token: string, homeDir = "") {
+  const config: DashboardConfig = { triliumUrl: fake.url, etapiToken: token, port: 0, pollMs: 60000, configDir: "", homeDir };
+  const app = createApp({ config, client: new TriliumClient({ baseUrl: fake.url, token }), repos: new RepoRegistry(), hub: new EventHub(), registry: new AgentRegistry(), homeDir });
   const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: app.fetch });
   cleanups.push(() => { app.stop(); server.stop(true); });
   return { app, base: `http://127.0.0.1:${server.port}` };
@@ -87,5 +88,45 @@ describe("dashboard server", () => {
     expect(h.trilium.ok).toBe(false);
     expect(h.trilium.error).toContain("401");
     expect(JSON.stringify(h)).not.toContain("bad");
+  });
+
+  test("events: subagent start/stop, unknown project, bad body", async () => {
+    const home = mkdtempSync(join(tmpdir(), "factory-home-"));
+    const other = mkdtempSync(join(tmpdir(), "factory-norepo-"));
+    cleanups.push(() => { rmSync(home, { recursive: true, force: true }); rmSync(other, { recursive: true, force: true }); });
+    const dir = join(home, ".claude/projects", cwdSlug(repoDir), "s1/subagents");
+    mkdirSync(dir, { recursive: true });
+    const fx = join(import.meta.dir, "../fixtures/transcripts/agent-sample");
+    copyFileSync(`${fx}.jsonl`, join(dir, "agent-a1.jsonl"));
+    copyFileSync(`${fx}.meta.json`, join(dir, "agent-a1.meta.json"));
+
+    const { base } = boot(fake, "good", home);
+    const post = (b: unknown) => fetch(`${base}/api/events`, { method: "POST", body: JSON.stringify(b) });
+    const q = encodeURIComponent(repoDir);
+    const reposBefore = await (await fetch(`${base}/api/repos`)).json();
+
+    expect((await post({})).status).toBe(400);
+    expect((await post({ event: "stage", project: other })).status).toBe(204);
+    expect(await (await fetch(`${base}/api/repos`)).json()).toEqual(reposBefore as any);
+
+    const start = await post({ event: "subagent-start", ts: "x", project: repoDir, payload: { agent_id: "a1", agent_type: "factory:builder", session_id: "s1", cwd: repoDir } });
+    expect(start.status).toBe(204);
+    let ag: any = await (await fetch(`${base}/api/agents?repo=${q}`)).json();
+    expect(ag.live).toHaveLength(1);
+    expect(ag.live[0].taskNoteId).toBe("t001");
+    await Bun.sleep(100);
+    const steps: any = await (await fetch(`${base}/api/agents/a1/steps?after=-1`)).json();
+    expect(steps.steps.length).toBeGreaterThan(0);
+    expect(steps.finished).toBe(false);
+    expect((await fetch(`${base}/api/agents/zz/steps`)).status).toBe(404);
+
+    await post({ event: "task", project: repoDir, task: "T-001", payload: {} });
+    await post({ event: "subagent-stop", project: repoDir, payload: { agent_id: "a1" } });
+    ag = await (await fetch(`${base}/api/agents?repo=${q}`)).json();
+    expect(ag.live).toHaveLength(0);
+    expect(ag.recent).toHaveLength(1);
+    expect(ag.lastTaskEvent.task).toBe("T-001");
+    const after: any = await (await fetch(`${base}/api/agents/a1/steps`)).json();
+    expect(after.finished).toBe(true);
   });
 });

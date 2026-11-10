@@ -1,3 +1,4 @@
+import { AgentRegistry } from "./agents/registry";
 import { createApp } from "./app";
 import { loadConfig } from "./config";
 import { EventHub } from "./hub";
@@ -8,8 +9,7 @@ const config = loadConfig();
 const client = new TriliumClient({ baseUrl: config.triliumUrl, token: config.etapiToken });
 const repos = new RepoRegistry();
 const hub = new EventHub();
-// replaced by the real AgentRegistry in a later task
-const registry = { list: () => ({ live: [], recent: [] }) };
+const registry = new AgentRegistry();
 
 const app = createApp({ config, client, repos, hub, registry, homeDir: config.homeDir });
 for (const p of (process.env.FACTORY_REPOS ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
