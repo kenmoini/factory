@@ -1,0 +1,7 @@
+{
+  "name": "factory",
+  "version": "0.1.0",
+  "description": "Claude-driven software factory: Trilium-backed planning/tracking, Graphify code graph, review pipeline and live dashboard",
+  "author": { "name": "Ken Moini" },
+  "keywords": ["factory", "orchestrator", "trilium", "graphify"]
+}
