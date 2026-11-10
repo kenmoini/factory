@@ -2,6 +2,8 @@
 # factory-event <kind> [--stage S] [--status ST] [--task T] [--workstream W]
 # Relays hook JSON (stdin) to the local dashboard. Never blocks; always exits 0.
 
+trap 'exit 0' EXIT
+
 PROJECT="${CLAUDE_PROJECT_DIR:-$PWD}"
 PROJ_CFG="$PROJECT/.factory/config.json"
 [ -f "$PROJ_CFG" ] || exit 0
@@ -13,10 +15,10 @@ shift
 STAGE="" STATUS="" TASK="" WORKSTREAM=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --stage) STAGE="${2:-}"; shift ;;
-    --status) STATUS="${2:-}"; shift ;;
-    --task) TASK="${2:-}"; shift ;;
-    --workstream) WORKSTREAM="${2:-}"; shift ;;
+    --stage) if [ $# -gt 1 ]; then STAGE="$2"; shift; fi ;;
+    --status) if [ $# -gt 1 ]; then STATUS="$2"; shift; fi ;;
+    --task) if [ $# -gt 1 ]; then TASK="$2"; shift; fi ;;
+    --workstream) if [ $# -gt 1 ]; then WORKSTREAM="$2"; shift; fi ;;
   esac
   shift
 done

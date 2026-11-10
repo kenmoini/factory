@@ -40,4 +40,11 @@ describe("factory-event", () => {
     const r = await run(["session-start"], "{}");
     expect(r.out.trim()).toBe("Factory project detected (active workstream: demo). Run /factory:run status.");
   });
+  test("trailing flag without value → exit 0 and event still posted", async () => {
+    writeFileSync(join(repo, ".factory/config.json"), "{}");
+    const r = await run(["stage", "--stage"], "{}");
+    expect(r.code).toBe(0);
+    const body = JSON.parse(readFileSync(join(dir, "curl.body"), "utf8"));
+    expect(body.event).toBe("stage"); expect("stage" in body).toBe(false);
+  });
 });
