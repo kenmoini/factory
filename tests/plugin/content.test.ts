@@ -186,3 +186,15 @@ test("templates: set equals the 13 expected; '# ' title on line 1, factoryDoc co
   }
   expect(problems, problems.join("\n")).toEqual([]);
 });
+
+// ---------- rule 9: execute stage covers every loop phase and bin command ----------
+const EXECUTE_PHASES = ["SELECT", "SPEC", "BUILD", "REVIEW", "FIX", "APPROVE", "MERGE", "DONE", "NEEDS-HUMAN", "FINISH"];
+const FACTORY_BINS = ["factory-worktree", "factory-review-package", "factory-merge", "factory-event", "factory-config"];
+test("execute: stages/execute.md mentions every execute-loop phase and factory-* command", () => {
+  const f = "skills/run/stages/execute.md";
+  expect(existsSync(abs(f)), `${f}: missing`).toBe(true);
+  const body = read(f);
+  const has = (w: string) => new RegExp(`(?<![\\w-])${w}(?![\\w-])`).test(body);
+  const problems = [...EXECUTE_PHASES, ...FACTORY_BINS].filter((w) => !has(w)).map((w) => `${f}: does not mention ${w}`);
+  expect(problems, problems.join("\n")).toEqual([]);
+});
