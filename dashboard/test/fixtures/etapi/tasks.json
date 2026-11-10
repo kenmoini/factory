@@ -401,7 +401,7 @@
           "noteId": "t004",
           "type": "label",
           "name": "escalation",
-          "value": "builder failed twice",
+          "value": "fix-cap",
           "position": 100,
           "isInheritable": false
         }

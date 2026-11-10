@@ -4,7 +4,6 @@ import type { EtapiNote } from "./client";
 
 const STATUSES: readonly TaskStatus[] = ["todo", "spec", "building", "reviewing", "fixing", "approving", "merging", "done", "needs-human", "blocked"];
 
-
 export function labelsOf(note: EtapiNote): Labels {
   const out: Labels = {};
   for (const a of note.attributes ?? []) if (a.type === "label") out[a.name] = a.value;
@@ -53,6 +52,7 @@ export function toTask(n: EtapiNote): Task {
 
 export function toDoc(n: EtapiNote): Doc {
   const l = labelsOf(n);
+  // defensive: orchestrator writes text notes; markdown branch kept for hand-made notes
   const format = n.type === "text" ? "html" : (n.mime ?? "").includes("markdown") ? "markdown" : "html";
   const d: Doc = { id: n.noteId, kind: l.factoryDoc || "unknown", title: n.title, format, modified: n.utcDateModified };
   if (n.parentNoteIds?.[0]) d.parentId = n.parentNoteIds[0];
@@ -61,7 +61,8 @@ export function toDoc(n: EtapiNote): Doc {
 
 export function toReview(n: EtapiNote): Review {
   const l = labelsOf(n);
-  const reviewer = (l.reviewer ?? "") as Reviewer;  const verdict = l.verdict === "PASS" || l.verdict === "CHANGES" ? l.verdict : "PENDING";
+  const reviewer = (l.reviewer ?? "") as Reviewer;
+  const verdict = l.verdict === "PASS" || l.verdict === "CHANGES" ? l.verdict : "PENDING";
   return { id: n.noteId, taskId: l.taskId ?? "", round: int(l.round), reviewer, verdict, modified: n.utcDateModified };
 }
 

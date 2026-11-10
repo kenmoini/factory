@@ -40,7 +40,7 @@ describe("mappers", () => {
     expect(t2.escalation).toBeUndefined();
     expect(toTask(byId(ts, "t003")).dependsOn).toEqual(["T-001", "T-002"]);
     const t4 = toTask(byId(ts, "t004"));
-    expect(t4).toMatchObject({ status: "needs-human", escalation: "builder failed twice", dependsOn: ["T-002", "T-003"] });
+    expect(t4).toMatchObject({ status: "needs-human", escalation: "fix-cap", dependsOn: ["T-002", "T-003"] });
     expect(t4.agentId).toBeUndefined();
   });
   test("toTask defaults for malformed task", () => {

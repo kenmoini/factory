@@ -43,7 +43,7 @@ export class TriliumClient {
     const res = await this.request(path, "application/json");
     try {
       return (await res.json()) as T;
-    } catch (e) {
+    } catch {
       throw new TriliumError(`GET ${path} returned invalid JSON`, res.status);
     }
   }
