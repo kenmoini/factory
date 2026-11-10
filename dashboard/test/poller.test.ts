@@ -1,0 +1,91 @@
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { EventHub } from "../src/hub";
+import { RepoRegistry } from "../src/repos";
+import type { StreamEvent } from "../src/shared/types";
+import { TriliumError, type EtapiNote, type TriliumClient } from "../src/trilium/client";
+import { Poller } from "../src/trilium/poller";
+
+const load = (f: string): EtapiNote[] => JSON.parse(readFileSync(join(import.meta.dir, "fixtures/etapi", `${f}.json`), "utf8")).results;
+
+function setup(projectNoteId?: string) {
+  const state = { bump: 0, fail: false, calls: [] as { q: string; opts: any }[], getNotes: 0 };
+  const byLabel: Record<string, () => EtapiNote[]> = {
+    "#factoryProject": () => load("project"),
+    "#factoryWorkstream": () => load("workstreams"),
+    "#factoryMilestone": () => load("milestones"),
+    "#factoryTask": () => load("tasks").map((t) => (t.noteId === "t001" && state.bump ? { ...t, utcDateModified: `2026-12-0${state.bump}T00:00:00.000Z` } : t)),
+    "#factoryDoc": () => load("docs"),
+    "#factoryReview": () => load("reviews"),
+    "#factoryAgentRun": () => load("runs"),
+  };
+  const client = {
+    search: async (q: string, opts: any = {}) => {
+      state.calls.push({ q, opts });
+      if (state.fail) throw new TriliumError("boom");
+      return byLabel[q.split(/\s/)[0]]();
+    },
+    getNote: async (id: string) => { state.getNotes++; if (state.fail) throw new TriliumError("boom"); return load("project").find((n) => n.noteId === id)!; },
+    getContent: async () => ({ content: "", mime: "text/html" }),
+    appInfo: async () => ({}),
+  } as unknown as TriliumClient;
+  const hub = new EventHub();
+  const events: StreamEvent[] = [];
+  hub.subscribe("/r/app", (e) => events.push(e));
+  const reg = new RepoRegistry({ readConfig: (p) => ({ repoPath: p, repoSlug: "app", projectNoteId, workstreams: {} }) });
+  const repo = reg.register("/r/app")!;
+  const poller = new Poller(repo, { client, hub, live: () => [] }, { intervalMs: 20 });
+  return { state, events, poller };
+}
+
+describe("Poller", () => {
+  test("publishes only on change; errors keep snapshot", async () => {
+    const { state, events, poller } = setup("proj1");
+    expect(await poller.refresh()).toBe(true);
+    expect(events.length).toBe(1);
+    expect(poller.snapshot()!.tasks.length).toBe(5);
+    expect(poller.snapshot()!.project.id).toBe("proj1");
+    expect(await poller.refresh()).toBe(false);
+    expect(events.length).toBe(1);
+    state.bump = 1;
+    expect(await poller.refresh()).toBe(true);
+    expect(events.length).toBe(2);
+    const before = poller.snapshot();
+    state.fail = true;
+    expect(await poller.refresh()).toBe(false);
+    expect(poller.snapshot()).toBe(before);
+    expect(poller.lastError()).toContain("boom");
+    state.fail = false;
+    await poller.refresh();
+    expect(poller.lastError()).toBeNull();
+  });
+
+  test("agent runs searched under the project; project docs at depth eq1", async () => {
+    const { state, poller } = setup("proj1");
+    await poller.refresh();
+    const run = state.calls.find((c) => c.q === "#factoryAgentRun")!;
+    expect(run.opts.ancestorNoteId).toBe("proj1");
+    expect(run.opts.limit).toBe(200);
+    expect(state.calls.some((c) => c.q === "#factoryDoc" && c.opts.ancestorNoteId === "proj1" && c.opts.ancestorDepth === "eq1")).toBe(true);
+    const ids = poller.snapshot()!.docs.map((d) => d.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  test("finds project by repoPath when id unknown", async () => {
+    const { state, poller } = setup(undefined);
+    await poller.refresh();
+    expect(state.calls[0].q).toBe("#factoryProject #repoPath='/r/app'");
+    expect(state.getNotes).toBe(0);
+    await poller.refresh();
+    expect(state.getNotes).toBe(1);
+  });
+
+  test("start/stop poll on a timer", async () => {
+    const { events, poller } = setup("proj1");
+    poller.start();
+    await new Promise((r) => setTimeout(r, 60));
+    poller.stop();
+    expect(events.length).toBe(1);
+  });
+});
