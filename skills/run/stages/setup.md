@@ -9,20 +9,32 @@ for the summary.
 
 - **Secret.** The ETAPI token never passes through you. It lives only in `<repoPath>/.mcp.json` (gitignored), where
   the user types it over the placeholder `your-etapi-token` themselves. Never ask for it, never Read, `cat` or print
-  `.mcp.json`, `~/.claude.json` or `~/.config/claude-factory/config.json`, never write a token into a command,
-  Trilium, the Factory Log, `.factory/` or a commit. Preflight reports only `trilium.{configured,placeholder,source}`;
-  the commands below print a status word or a path, never file content.
+  `.mcp.json`, `~/.claude.json` or `~/.config/claude-factory/config.json`, never run `claude mcp get` or `claude mcp
+  list` (they print the Authorization header), never write a token into a command, Trilium, the Factory Log,
+  `.factory/` or a commit. The commands below print a status word or a path, never file content.
 - **`<edit>`** = print: "Open `<repoPath>/.mcp.json` and replace `your-etapi-token` with your ETAPI token (Options →
   ETAPI in Trilium), then run `/mcp` → reconnect (or restart Claude Code) and re-run `/factory:run`." (`trilium.source`
   `user`: name the `trilium` entry in `~/.claude.json` instead of `.mcp.json`.)
 - **Tracked `.mcp.json`.** Before writing it: `git -C "<repoPath>" ls-files --error-unmatch .mcp.json >/dev/null 2>&1`
-  exits 0 → it is committed, so a token in it would be too. Say so; AskUserQuestion `Untrack it (git rm --cached
-  .mcp.json; the file stays) / Stop setup`. Fix: `git -C "<repoPath>" rm -q --cached .mcp.json`.
+  exits 0 → it is committed, so a token in it would be too. Say so (untracking keeps the file here, but the ignore
+  commit removes it from the repo: teammates lose the shared file); AskUserQuestion `Untrack it (git rm --cached
+  .mcp.json) / Stop setup`. Fix: `git -C "<repoPath>" rm -q --cached .mcp.json`.
+- **`<ignore>`** (after writing `.mcp.json` or `.claude/settings.local.json`, and in step 7). Add the lines:
+  `f="<repoPath>/.gitignore"; touch "$f"; for e in .factory/ graphify-out/ .mcp.json .claude/settings.local.json; do grep -qxF "$e" "$f" || { [ -n "$(tail -c1 "$f")" ] && echo >> "$f"; echo "$e" >> "$f"; }; done`.
+  Commit check: commit when the repo has a commit, `git -C "<repoPath>" branch --show-current` is the default branch
+  (`main`, else `master`), `git -C "<repoPath>" status --porcelain -- .gitignore` is not empty and only those lines
+  were added (exits 0):
+  `m='^(\.factory/|graphify-out/|\.mcp\.json|\.claude/settings\.local\.json)$'; diff <(git -C "<repoPath>" show HEAD:.gitignore 2>/dev/null | grep -vE "$m") <(grep -vE "$m" "<repoPath>/.gitignore") >/dev/null`.
+  Commit = `git -C "<repoPath>" add .gitignore && git -C "<repoPath>" commit -m "chore: ignore factory working files" -- .gitignore`;
+  if `git -C "<repoPath>" diff --cached --name-only` then lists exactly `.gitignore` and `.mcp.json` (the Tracked
+  rule's removal), drop `-- .gitignore` so the removal is committed too (a pathspec re-adds the file). The questions
+  of steps 2, 3, 4 and 7 cover this commit.
 - **PATH.** Bash calls do not share environment: once uv or bun is installed in this run, start every later Bash
   call with `export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"; `.
-- **Stop setup** (a `Stop setup` answer, or a re-check that still fails): print what is missing and the user's next
-  action; `factory-event stage --stage setup --status stopped </dev/null`; if `Factory Log` exists and
-  `mcp__trilium__*` tools are available, append `- <ISO ts> [setup] stage stopped — <reason>`; end the whole run.
+- **Stop setup** (a `Stop setup` answer, or a re-check that still fails): run `<ignore>`'s commit check (never leave
+  `<main>` dirty); print what is missing and the user's next action; `factory-event stage --stage setup --status
+  stopped </dev/null`; if `Factory Log` exists and `mcp__trilium__*` tools are available, append
+  `- <ISO ts> [setup] stage stopped — <reason>`; end the whole run.
 
 ## Prerequisites
 
@@ -39,26 +51,26 @@ nothing is read from Trilium before step 9.
    - Fix: `if command -v brew >/dev/null; then brew install oven-sh/bun/bun; else curl -fsSL https://bun.sh/install | bash; fi`
      (upgrade: `brew upgrade bun` if brew-installed, else `bun upgrade`); PATH rule.
    - Re-check: `bun --version`; `factory-preflight` prints the full JSON.
-2. **Global config and legacy credentials** (`config.global`, `config.legacyTriliumKeys`). The global config holds
-   only `dashboardPort`.
+2. **Global config and legacy credentials** (`config.global`, `config.legacyTriliumKeys`).
    - `factory-config get dashboardPort >/dev/null 2>&1` fails → `factory-config set dashboardPort 7777`.
-   - `config.legacyTriliumKeys=true` → tell the user the global config still holds the old Trilium URL and token;
-     AskUserQuestion `Migrate them into <repoPath>/.mcp.json (recommended) / Leave`. Migrate → Tracked rule, then
-     `factory-config migrate-trilium --repo "<repoPath>"`: it moves both in-process (never printed), gitignores
-     `.mcp.json` and prints `{"migrated":true,"mcpJson":"<path>"}` (`"kept":true`: an entry with a real token was
-     already there and is kept); `"error"` → show it, Stop setup. Leave → continue (setup and preflight no longer use them).
+   - `config.legacyTriliumKeys=true` → tell the user the global config still holds the old Trilium URL and token
+     (moving them gitignores `.mcp.json`, `<ignore>` commit); AskUserQuestion `Migrate them into
+     <repoPath>/.mcp.json (recommended) / Leave`. Migrate → Tracked rule, then
+     `factory-config migrate-trilium --repo "<repoPath>"` (moves both in-process, never printed; `"kept":true` =
+     an existing real-token entry was kept), then `<ignore>`;
+     `"error"` → show it, Stop setup. Leave → continue (setup and preflight no longer use them).
    - Re-check: preflight.
 3. **Trilium MCP server entry** (`trilium.configured`, `.placeholder`, `.source`).
    - `configured=false` → AskUserQuestion "Trilium base URL (TriliumNext ≥ 0.106)? It goes into
      `<repoPath>/.mcp.json` as the `trilium` MCP server with a placeholder token you replace yourself; `.mcp.json` is
-     gitignored." options `http://localhost:8080` / `http://localhost:37840` (desktop) / `Stop setup`; others via Other.
+     gitignored (`<ignore>` commit)." options `http://localhost:8080` / `http://localhost:37840` (desktop) /
+     `Stop setup`; others via Other.
    - Fix: Tracked rule; then (prints `written`, `invalid` or `exists`; `<url>` single-quoted)
-     `bun -e 'const fs=require("fs"),[,p,u]=process.argv;let j={};try{if(fs.existsSync(p))j=JSON.parse(fs.readFileSync(p,"utf8"))}catch{j=0}const s=j&&typeof j=="object"&&!Array.isArray(j)?(j.mcpServers??={}):0;if(!s||typeof s!="object"||Array.isArray(s)){console.log("invalid");process.exit(1)}if(s.trilium){console.log("exists");process.exit(1)}s.trilium={type:"http",url:u.trim().replace(/\/+$/,"").replace(/\/(etapi|mcp)$/,"")+"/mcp",headers:{Authorization:"Bearer your-etapi-token"}};fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n",{mode:0o600});fs.chmodSync(p,0o600);console.log("written")' "<repoPath>/.mcp.json" '<url>'`.
-     `invalid` → "`.mcp.json` is not valid JSON: fix or delete it"; `exists` → "its `trilium` server is not one the
-     factory can use (needs `"type": "http"` and a `url`): fix or remove it"; either → Stop setup.
-     Then `.gitignore`: `f="<repoPath>/.gitignore"; touch "$f"; grep -qxF .mcp.json "$f" || { [ -n "$(tail -c1 "$f")" ] && echo >> "$f"; echo .mcp.json >> "$f"; }`.
-     Then step 4's TLS bullet now (one restart covers both); then `<edit>`; Stop setup.
-   - `placeholder=true` → `<edit>`; Stop setup.
+     `bun -e 'const fs=require("fs"),[,p,u]=process.argv,o=v=>v&&typeof v=="object"&&!Array.isArray(v);let j={};try{if(fs.existsSync(p))j=JSON.parse(fs.readFileSync(p,"utf8"))}catch{j=0}const s=o(j)&&(j.mcpServers??={});if(!o(s)){console.log("invalid");process.exit(1)}if(s.trilium){console.log("exists");process.exit(1)}s.trilium={type:"http",url:u.trim().replace(/\/+$/,"").replace(/\/(etapi|mcp)$/,"")+"/mcp",headers:{Authorization:"Bearer your-etapi-token"}};fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n",{mode:0o600});fs.chmodSync(p,0o600);console.log("written")' "<repoPath>/.mcp.json" '<url>'`.
+     `invalid` (not JSON) or `exists` (a `trilium` server without `"type": "http"` and a `url`) → the user must fix
+     `.mcp.json`; Stop setup.
+     Then step 4's TLS bullet now (one restart covers both); then `<ignore>`; then `<edit>`; Stop setup.
+   - `placeholder=true` → `<ignore>` (say if it adds a line); `<edit>`; Stop setup.
 4. **Trilium connection** (`trilium.ok`, `.error`, `.url`, `.version`, `.mcpEndpoint`). Decide on preflight only: no
    `curl` or other command with the token.
    - `ok=false` → print `trilium.url` and `trilium.error` (`HTTP 401`/`HTTP 403`: the token was refused, `<edit>` with
@@ -68,14 +80,13 @@ nothing is read from Trilium before step 9.
      TriliumNext to ≥ 0.106, then re-run /factory:run"; Stop setup.
    - `trilium.mcpEndpoint=false` → "Enable it in Trilium: Options → AI/LLM → MCP server"; AskUserQuestion
      `Retry (enabled) / Stop setup`; re-check.
-   - TLS for Claude Code's own MCP client (only when the URL starts with `https://`). Check: `grep -qE
-     '"NODE_TLS_REJECT_UNAUTHORIZED": *"0"' "<repoPath>/.claude/settings.local.json" 2>/dev/null`. Unset → explain
-     that the plugin skips certificate checks but Claude Code's MCP client does not, so a self-signed or private-CA
-     certificate keeps `trilium` from connecting, and that the setting turns verification off for Claude Code and the
-     processes it starts in this project; AskUserQuestion `Write NODE_TLS_REJECT_UNAUTHORIZED=0 into
-     <repoPath>/.claude/settings.local.json env (recommended for self-signed certs) / Skip`. Fix (keeps other keys;
-     prints `written` or `invalid`):
-     `bun -e 'const fs=require("fs"),[,p]=process.argv;let j={};try{if(fs.existsSync(p))j=JSON.parse(fs.readFileSync(p,"utf8"))}catch{j=0}if(!j||typeof j!="object"||Array.isArray(j)){console.log("invalid");process.exit(1)}j.env={...(j.env&&typeof j.env=="object"?j.env:{}),NODE_TLS_REJECT_UNAUTHORIZED:"0"};fs.mkdirSync(require("path").dirname(p),{recursive:true});fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n");console.log("written")' "<repoPath>/.claude/settings.local.json"`
+   - TLS for Claude Code's own MCP client (`https://` URLs only). Check: `grep -qE
+     '"NODE_TLS_REJECT_UNAUTHORIZED": *"0"' "<repoPath>/.claude/settings.local.json" 2>/dev/null`. Unset → explain:
+     unlike the plugin, Claude Code's MCP client checks certificates (a self-signed or private-CA one keeps `trilium`
+     from connecting); the setting turns that off for Claude Code and all it starts in this project; AskUserQuestion `Write NODE_TLS_REJECT_UNAUTHORIZED=0 into
+     <repoPath>/.claude/settings.local.json env (recommended for self-signed certs) / Skip` (gitignored, `<ignore>`
+     commit). Fix (keeps other keys; prints `written` or `invalid`; then `<ignore>`):
+     `bun -e 'const fs=require("fs"),[,p]=process.argv,o=v=>v&&typeof v=="object"&&!Array.isArray(v);let j={};try{if(fs.existsSync(p))j=JSON.parse(fs.readFileSync(p,"utf8"))}catch{j=0}if(!o(j)){console.log("invalid");process.exit(1)}j.env={...(o(j.env)?j.env:{}),NODE_TLS_REJECT_UNAUTHORIZED:"0"};fs.mkdirSync(require("path").dirname(p),{recursive:true});fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n");console.log("written")' "<repoPath>/.claude/settings.local.json"`
      (`invalid` → show it, continue without). It takes effect after Claude Code restarts: remember "TLS env written".
 5. **Tools** (`tools.uv`, `graphify.installed`, `tools.superpowers`, `graphify` in your skills list).
    - Missing items, in install order: uv (`tools.uv=false`): `curl -LsSf https://astral.sh/uv/install.sh | sh` (to
@@ -91,25 +102,19 @@ nothing is read from Trilium before step 9.
    - `false` → "`<cwd>` is not a git repository; the factory needs one"; AskUserQuestion
      `Initialise git here (git init -b main) / Stop setup`. Fix: `git init -b main`. Re-check: `git.isRepo=true`.
 7. **Working files and graph hooks** (`<repoPath>`).
-   - Checks: dirs `<repoPath>/.factory/{worktrees,mockups,tasks,workstreams}`; `<repoPath>/.gitignore` lines
-     `.factory/`, `graphify-out/` and `.mcp.json` (`grep -qxF`); hooks: `<hooksDir>` = output of
+   - Checks: dirs `<repoPath>/.factory/{worktrees,mockups,tasks,workstreams}`; `<repoPath>/.gitignore` has the
+     `<ignore>` lines (`grep -qxF`); hooks: `<hooksDir>` = output of
      `git -C "<repoPath>" rev-parse --path-format=absolute --git-path hooks` (right for linked worktrees, submodules
      and `core.hooksPath`), present = `grep -q graphify "<hooksDir>/post-commit"` (not `graphify.gitHooks`); the repo
      has a commit (`git -C "<repoPath>" rev-parse -q --verify HEAD` succeeds; preflight `git.hasCommits`).
-   - Missing → tell the user the list (dirs; `.gitignore` lines + the commit below if it applies, naming it the
+   - Missing → tell the user the list (dirs; `.gitignore` lines + the `<ignore>` commit if it applies, naming it the
      repo's first commit when there is none; Graphify git hooks in `<hooksDir>`, which rebuild `graphify-out/` after
      commits); AskUserQuestion `Apply / Stop setup`.
    - Dirs: `mkdir -p "<repoPath>/.factory/worktrees" "<repoPath>/.factory/mockups" "<repoPath>/.factory/tasks" "<repoPath>/.factory/workstreams"`.
-   - `.gitignore`: note whether `git -C "<repoPath>" status --porcelain -- .gitignore` is empty, then
-     `f="<repoPath>/.gitignore"; touch "$f"; for e in .factory/ graphify-out/ .mcp.json; do grep -qxF "$e" "$f" || { [ -n "$(tail -c1 "$f")" ] && echo >> "$f"; echo "$e" >> "$f"; }; done`.
-     Commit = `git -C "<repoPath>" add .gitignore && git -C "<repoPath>" commit -m "chore: ignore factory working files" -- .gitignore`
-     (stages and commits only `.gitignore`). Make it when either:
-     - the repo has no commits (`rev-parse -q --verify HEAD` fails): it becomes the FIRST commit, on the unborn
-       branch (`git -C "<repoPath>" branch --show-current`; `main` after step 6), which is then the default branch
-       `<main>`. Made even when no line was added: brainstorm cannot branch a worktree from an empty repo; or
-     - lines were added, it was empty before, and `git -C "<repoPath>" branch --show-current` is the default branch
-       (`main`, else `master`).
-     Otherwise leave it uncommitted; say so in the summary.
+   - `.gitignore`: `<ignore>`; its commit is also made when the repo has no commits (`rev-parse -q --verify HEAD`
+     fails), even with no line added (brainstorm cannot branch a worktree from an empty repo): the FIRST commit, on
+     the unborn branch (`branch --show-current`; `main` after step 6), then the default branch `<main>`. Not made →
+     leave `.gitignore` uncommitted; say so in the summary.
    - Hooks: `cd "<repoPath>" && graphify hook install`; re-check with the same grep. Still absent (e.g. husky owns
      `core.hooksPath`) → warn once that the graph refreshes only via SOP 5's stale check and continue: hooks never
      Stop setup.

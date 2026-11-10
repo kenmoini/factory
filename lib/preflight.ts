@@ -130,7 +130,7 @@ export async function preflight(opts: {
     const out: Preflight["trilium"] = { configured: true, placeholder: t.placeholder, source: t.source, ok: false, url };
     if (t.placeholder) return { ...out, error: "token placeholder" }; // never send the placeholder to Trilium
     const mcpP = get(t.mcpUrl, { Authorization: `Bearer ${t.token}` });
-    const regP = exec(["claude", "mcp", "get", "trilium"]);
+    const regP = exec(["claude", "mcp", "get", "trilium"]); // only the exit code is used: its output shows the Authorization header
     const done = Promise.allSettled([mcpP, regP]);
     try {
       const res = await get(`${url}/etapi/app-info`, { Authorization: t.token });

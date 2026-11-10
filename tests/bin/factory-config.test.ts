@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -125,6 +125,25 @@ describe("factory-config", () => {
       writeFileSync(ph.mcp, JSON.stringify({ mcpServers: { trilium: { type: "http", url: "https://old/mcp", headers: { Authorization: "Bearer your-etapi-token" } } } }));
       expect((await run(["migrate-trilium", "--repo", ph.repo], ph.env)).code).toBe(0);
       expect(readJson(ph.mcp).mcpServers.trilium.headers.Authorization).toBe(`Bearer ${TOKEN}`);
+    });
+
+    test("write order: .gitignore first, an existing .mcp.json is made 0600 before the token goes in, legacy keys last", async () => {
+      const ok = setup();
+      writeFileSync(ok.mcp, JSON.stringify({ mcpServers: {} }), { mode: 0o644 });
+      chmodSync(ok.mcp, 0o644);
+      expect((await run(["migrate-trilium", "--repo", ok.repo], ok.env)).code).toBe(0);
+      expect(statSync(ok.mcp).mode & 0o777).toBe(0o600);
+
+      const blocked = setup(); // .gitignore cannot be written → nothing else may happen
+      mkdirSync(blocked.gi);
+      writeFileSync(blocked.mcp, JSON.stringify({ mcpServers: {} }), { mode: 0o644 });
+      chmodSync(blocked.mcp, 0o644);
+      const r = await run(["migrate-trilium", "--repo", blocked.repo], blocked.env);
+      expect(r.code).toBe(1);
+      noToken(r);
+      expect(JSON.parse(r.out).migrated).toBe(false);
+      expect(readFileSync(blocked.mcp, "utf8")).not.toContain(TOKEN);
+      expect(readJson(blocked.cfg).etapiToken).toBe(TOKEN);
     });
 
     test("a URL without a token migrates with the placeholder token", async () => {

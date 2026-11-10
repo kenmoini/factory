@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { PLACEHOLDER_TOKEN, triliumBaseUrl } from "./trilium-config";
 
 /** The global config holds no Trilium credentials (they live in the project `.mcp.json`). */
-export type GlobalConfig = { dashboardPort: number; tlsVerify?: boolean };
+export type GlobalConfig = { dashboardPort: number };
 export type WorkstreamEntry = { noteId?: string; branch: string; worktree: string };
 export type RepoConfig = { projectNoteId?: string; activeWorkstream?: string; workstreams: Record<string, WorkstreamEntry> };
 
@@ -156,13 +156,15 @@ export function migrateTrilium(repoDir: string, env: NodeJS.ProcessEnv = process
     const raw = key && typeof headers[key] === "string" ? (headers[key] as string).replace(/^Bearer(\s+|$)/i, "").trim() : "";
     kept = raw !== "" && raw !== PLACEHOLDER_TOKEN;
   }
+  // Order: ignore it first, tighten an existing file before the token goes in, delete the legacy keys last.
+  ensureGitignoreEntry(repoDir, ".mcp.json");
+  if (existsSync(mcpJson)) chmodSync(mcpJson, 0o600);
   if (!kept) {
     const base = triliumBaseUrl(url.replace(/\/+$/, "").replace(/\/etapi$/, ""));
     servers.trilium = { type: "http", url: `${base}/mcp`, headers: { Authorization: `Bearer ${token || PLACEHOLDER_TOKEN}` } };
     doc.mcpServers = servers;
     writeJson(mcpJson, doc);
-  } else chmodSync(mcpJson, 0o600);
-  ensureGitignoreEntry(repoDir, ".mcp.json");
+  }
   strip();
   return { code: 0, result: kept ? { migrated: true, mcpJson, kept: true } : { migrated: true, mcpJson } };
 }

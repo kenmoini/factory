@@ -36,7 +36,8 @@ agent dispatch rules in `$PLUGIN_ROOT/skills/run/references/agent-protocol.md`.
 
 - `<main>` is the default branch (`main`, else `master`; schema Placeholders). Your only commits on `<main>` are the
   two scaffolding commits: `chore: ignore factory working files` (setup's `.gitignore`: `.factory/`,
-  `graphify-out/`, `.mcp.json`) and `chore: enforce standards` (after `#approval=approved`).
+  `graphify-out/`, `.mcp.json`, `.claude/settings.local.json`) and `chore: enforce standards` (after
+  `#approval=approved`).
 - Builders commit only on branch `<slug>` inside `<repoPath>/.factory/worktrees/<slug>`; the api-design stage commits
   its repo API docs there too (`docs(api): <slug>`). Nobody else commits on `<main>`.
 - `<main>` changes only through `factory-merge <repoPath> <slug> --message-file <file>` (`git merge --no-ff`), except
@@ -71,7 +72,7 @@ agent dispatch rules in `$PLUGIN_ROOT/skills/run/references/agent-protocol.md`.
 
 - You never Write/Edit files in the product source tree or the worktree (builders do), except these allowed writes:
   `.factory/**` (exports, drafts, briefs, ledger, mockups), `.gitignore` entries (setup: `.factory/`, `graphify-out/`,
-  `.mcp.json`), setup's placeholder `trilium` entry in `.mcp.json` and `env` in `.claude/settings.local.json`,
+  `.mcp.json`, `.claude/settings.local.json`), setup's placeholder `trilium` entry in `.mcp.json` and `env` in `.claude/settings.local.json`,
   approved scaffolding in enforce-standards, repo API docs in api-design (in the workstream worktree, path from
   `#apiDocPath`).
 - Need a code change outside a task? Ask the user to add it to the plan (plan stage) rather than doing it.

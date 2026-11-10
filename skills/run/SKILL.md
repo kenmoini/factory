@@ -31,8 +31,9 @@ exists; it holds only `dashboardPort`), `config.legacyTriliumKeys` (that file st
 `trilium.{configured,placeholder,source,ok,url,version,mcpEndpoint,mcpRegistered,error}` (`configured` = a `trilium`
 http MCP server was found, `source` = where: `project` (`<repoPath>/.mcp.json`), `user` (`~/.claude.json`) or `env`;
 `placeholder` = its token is still `your-etapi-token` or empty, so nothing was sent; `url` = Trilium base URL; `ok` =
-ETAPI answered; `mcpEndpoint` = `<url>/mcp` answers; `mcpRegistered` = `claude mcp get trilium` succeeds; the token
-itself is never reported);
+ETAPI answered; `mcpEndpoint` = `<url>/mcp` answers; `mcpRegistered` = preflight's own `claude mcp get trilium`
+exited 0 (it keeps only the exit code: that output shows the Authorization header, so never run `claude mcp get` or
+`claude mcp list` yourself); the token itself is never reported);
 `dashboard.{running,port}`; `git.{isRepo,root,branch,dirty,hasCommits}` (`root` = `<repoPath>` below; its basename = `<repoName>`, the project
 note title and `#project` value; never use one for the other);
 `factory.{configured,projectNoteId,activeWorkstream,worktree}`; `graphify.{installed,outPresent,ageMinutes,gitHooks}`;
@@ -66,9 +67,10 @@ Whatever the verb (except `status`, below), run the setup stage first (Dispatch 
 - `trilium.configured=false`, `trilium.placeholder=true` or `trilium.ok=false`;
 - no `mcp__trilium__*` tools in this session.
 
-Never trigger on `trilium.mcpRegistered=false` (its 3 s `claude mcp get` probe can time out on a healthy setup) or
-on `config.legacyTriliumKeys` alone (setup offers the migration whenever it runs). `status` stays read-only: when a
-trigger holds it prints which one and `run /factory:setup`, then stops, without running setup.
+Never trigger on `trilium.mcpRegistered=false` (preflight's 3 s probe can time out on a healthy setup) or on
+`config.legacyTriliumKeys` alone: when it is true and no trigger holds, print one line, `Legacy Trilium keys found
+in the global config — run /factory:setup to migrate them into .mcp.json`, and go on. `status` stays read-only: when
+a trigger holds it prints which one and `run /factory:setup`, then stops, without running setup.
 
 When setup stops for a user action (replace the placeholder token in `.mcp.json`, `/mcp` reconnect, restart), it
 ends the run: the user re-runs `/factory:run $ARGUMENTS` afterwards. Otherwise run `factory-preflight` again and

@@ -10,10 +10,10 @@ describe("global config", () => {
   test("missing file reads as null", () => expect(readGlobalConfig(env())).toBeNull());
   test("round-trips and is mode 0600", () => {
     const e = env();
-    const p = writeGlobalConfig({ dashboardPort: 7777, tlsVerify: true }, e);
+    const p = writeGlobalConfig({ dashboardPort: 7777 }, e);
     expect(p).toBe(globalConfigPath(e));
     expect(statSync(p).mode & 0o777).toBe(0o600);
-    expect(readGlobalConfig(e)).toEqual({ dashboardPort: 7777, tlsVerify: true });
+    expect(readGlobalConfig(e)).toEqual({ dashboardPort: 7777 });
   });
   test("legacy Trilium keys are still returned as read, and detected", () => {
     const e = env();

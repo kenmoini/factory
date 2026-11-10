@@ -87,7 +87,7 @@ Stage commands (each also available as `/factory:run <stage>`):
 
 ## Working files
 
-Created in the target repo by setup and gitignored (`.factory/`, `graphify-out/` and `.mcp.json` are added to `.gitignore`):
+Created in the target repo by setup and gitignored (`.factory/`, `graphify-out/`, `.mcp.json` and `.claude/settings.local.json` are added to `.gitignore` and committed on the default branch as `chore: ignore factory working files`):
 
 ```
 .factory/
