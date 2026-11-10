@@ -4,7 +4,7 @@ import type { LiveAgent, Step, WorkstreamSnapshot } from "../src/shared/types";
 
 const snap = (fp: string): WorkstreamSnapshot => ({
   project: { id: "proj1", title: "demo-repo", repo: "demo-repo", repoPath: "/work/demo-repo", labels: {}, modified: "" },
-  workstream: null, milestones: [], tasks: [], docs: [], reviews: [], runs: [], live: [], fingerprint: fp,
+  workstream: null, workstreams: [], milestones: [], tasks: [], docs: [], reviews: [], runs: [], live: [], fingerprint: fp,
 });
 const agent = (id: string, extra: Partial<LiveAgent> = {}): LiveAgent =>
   ({ agentId: id, agentType: "builder", cwd: "/w", startedAt: "2026-11-10T10:00:00Z", stepCount: 0, ...extra });

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { NO_TASK } from "../../src/shared/agents";
 import type { HookEvent, LiveAgent, Step, Task, WorkstreamSnapshot } from "../../src/shared/types";
 import { formatElapsed, useNow } from "../lib/clock";
 import { dispatch, store, useStore } from "../lib/store";
@@ -46,7 +47,7 @@ function AgentCard({ agent, running, selected, task, steps, onSelect }: {
           <button className="task-link" type="button" title={`Open ${task.taskId} on the board`} onClick={() => openTask(task.id)}>
             <span className="card-id">{task.taskId}</span> {stripId(task.title, task.taskId)}
           </button>
-        ) : <span className="agent-none">{agent.taskNoteId ? "Task in another workstream" : "No task"}</span>}
+        ) : <span className="agent-none">{agent.taskNoteId && agent.taskNoteId !== NO_TASK ? "Task in another workstream" : "No task"}</span>}
       </div>
       <div className="card-agent">
         {running && <span className="pulse" aria-hidden="true" />}

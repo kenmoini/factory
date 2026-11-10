@@ -2,7 +2,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EtapiNote } from "../../src/trilium/client";
 
-export interface FakeEtapi { url: string; token: string; stop(): void; notes: EtapiNote[]; calls: string[] }
+/** `add` puts a note (and its content) into the running fake, as if written to Trilium after a poll. */
+export interface FakeEtapi { url: string; token: string; stop(): void; notes: EtapiNote[]; calls: string[]; add(note: EtapiNote, content?: string): void }
 
 function parseTerms(q: string): { name: string; value?: string }[] {
   const out: { name: string; value?: string }[] = [];
@@ -61,7 +62,12 @@ export function startFakeEtapi(fixtures: { notes: EtapiNote[]; contents: Record<
       return json({ message: "not found" }, 404);
     },
   });
-  return { url: `http://127.0.0.1:${server.port}`, token, stop: () => void server.stop(true), notes, calls };
+  const add = (note: EtapiNote, content?: string) => {
+    notes.push(note);
+    byId.set(note.noteId, note);
+    if (content !== undefined) fixtures.contents[note.noteId] = content;
+  };
+  return { url: `http://127.0.0.1:${server.port}`, token, stop: () => void server.stop(true), notes, calls, add };
 }
 
 export function loadFixtureNotes(): { notes: EtapiNote[]; contents: Record<string, string> } {

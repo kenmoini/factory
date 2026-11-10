@@ -1,5 +1,5 @@
 // factory-dashboard daemon lifecycle: start | stop | status | open | restart
-import { closeSync, openSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, openSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig } from "./config";
 
@@ -83,6 +83,46 @@ function isOurServer(pid: number): boolean {
   } catch { return false; }
 }
 
+function log(line: string): void {
+  try {
+    mkdirSync(configDir, { recursive: true });
+    appendFileSync(logFile, `${new Date().toISOString()} factory-dashboard daemon: ${line}\n`);
+  } catch { /* no log, no fuss */ }
+}
+
+/**
+ * The repo `factory-dashboard start` runs from is registered right away, so its board shows before the first hook
+ * event. Failures are logged, never fatal: the next event registers the repo anyway.
+ */
+async function registerCwd(): Promise<void> {
+  const cwd = process.cwd();
+  if (!existsSync(join(cwd, ".factory", "config.json"))) return;
+  try {
+    const r = await fetch(`${url}/api/repos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: cwd }),
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!r.ok) log(`registering ${cwd} returned ${r.status}`);
+  } catch (e) {
+    log(`registering ${cwd} failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+/** A plugin install has no dashboard/node_modules: install the locked deps once, output to the log. */
+function ensureDeps(): boolean {
+  if (existsSync(join(dashboardDir, "node_modules"))) return true;
+  mkdirSync(configDir, { recursive: true });
+  const fd = openSync(logFile, "a");
+  try {
+    const r = Bun.spawnSync([process.execPath, "install", "--frozen-lockfile"], { cwd: dashboardDir, stdin: "ignore", stdout: fd, stderr: fd });
+    return r.exitCode === 0;
+  } catch {
+    return false;
+  } finally { closeSync(fd); }
+}
+
 async function terminate(pid: number): Promise<void> {
   try { process.kill(pid, "SIGTERM"); } catch { /* raced */ }
   const deadline = Date.now() + 5000;
@@ -98,6 +138,7 @@ async function start(): Promise<number> {
       const deadline = Date.now() + 5000;
       while (Date.now() < deadline) {
         if (await healthy()) {
+          await registerCwd();
           print({ running: true, port, pid: existing, url });
           if (args.open) openUrl();
           return 0;
@@ -109,6 +150,10 @@ async function start(): Promise<number> {
     } else {
       rmSync(pidFile, { force: true }); // pid reused by an unrelated process
     }
+  }
+  if (!ensureDeps()) {
+    print({ running: false, error: "bun install failed", log: logFile });
+    return 1;
   }
   mkdirSync(configDir, { recursive: true });
   const logFd = openSync(logFile, "a");
@@ -134,6 +179,7 @@ async function start(): Promise<number> {
     if (proc.exitCode !== null) break;
     if (await healthy()) {
       if (proc.exitCode !== null) break;
+      await registerCwd();
       print({ running: true, port, pid: proc.pid, url, ...(replaced !== undefined ? { replaced } : {}) });
       if (args.open) openUrl();
       return 0;

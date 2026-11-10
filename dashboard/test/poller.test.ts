@@ -101,6 +101,26 @@ describe("Poller", () => {
     expect(state.getNotes).toBe(1);
   });
 
+  test("the snapshot lists every workstream of the project", async () => {
+    const { poller } = setup("proj1");
+    await poller.refresh();
+    expect(poller.snapshot()!.workstreams.map((w) => w.slug)).toEqual(["demo"]);
+  });
+
+  test("selectWorkstream marks a user choice only when asked, and waits out an in-flight refresh", async () => {
+    const { state, poller } = setup("proj1");
+    const first = poller.refresh();
+    const sel = poller.selectWorkstream("demo");
+    expect(poller.userSelected).toBe(false);
+    await first;
+    const before = state.calls.length;
+    await sel;
+    expect(state.calls.length).toBeGreaterThan(before); // a fresh refresh ran for the new slug
+    expect(poller.activeWorkstream()).toBe("demo");
+    await poller.selectWorkstream("demo", { user: true });
+    expect(poller.userSelected).toBe(true);
+  });
+
   test("start/stop poll on a timer", async () => {
     const { events, poller } = setup("proj1");
     poller.start();

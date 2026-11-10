@@ -77,15 +77,17 @@ export function toAgentRun(n: EtapiNote): AgentRun {
   const r: AgentRun = { id: n.noteId, title: n.title, agentType: l.agentType ?? "", status };
   if (l.agentId) r.agentId = l.agentId;
   if (l.taskId) r.taskId = l.taskId;
+  if (l.workstream) r.workstream = l.workstream;
   if (l.startedAt) r.startedAt = l.startedAt;
   if (l.endedAt) r.endedAt = l.endedAt;
   return r;
 }
 
+/** Changes whenever a note is modified or any of its labels changes (a label edit need not bump `utcDateModified`). */
 export function fingerprint(notes: EtapiNote[]): string {
   const lines = notes.map((n) => {
-    const l = labelsOf(n);
-    return `${n.noteId}|${n.utcDateModified}|${l.status ?? ""}|${l.agentId ?? ""}|${l.round ?? ""}`;
+    const labels = (n.attributes ?? []).filter((a) => a.type === "label").map((a) => `${a.name}=${a.value}`).sort();
+    return JSON.stringify([n.noteId, n.utcDateModified, labels]);
   });
   lines.sort();
   return createHash("sha256").update(lines.join("\n")).digest("hex");

@@ -78,11 +78,10 @@ function Header({ repos, current, snapshot }: { repos: RepoInfo[] | null; curren
   const [switching, setSwitching] = useState<string>();
   const running = Object.keys(live).length;
 
-  const slugs = [...new Set([
-    ...(current?.workstreams.map((w) => w.slug) ?? []),
-    ...(current?.activeWorkstream ? [current.activeWorkstream] : []),
-    ...(snapshot?.workstream ? [snapshot.workstream.slug] : []),
-  ])];
+  // the snapshot lists the project's workstream notes; before the first snapshot, the repo's config stands in
+  const slugs = [...new Set(snapshot
+    ? [...snapshot.workstreams.map((w) => w.slug), ...(snapshot.workstream ? [snapshot.workstream.slug] : [])]
+    : [...(current?.workstreams.map((w) => w.slug) ?? []), ...(current?.activeWorkstream ? [current.activeWorkstream] : [])])];
   const wsValue = switching ?? snapshot?.workstream?.slug ?? ws ?? "";
 
   const chooseWorkstream = async (slug: string) => {

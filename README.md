@@ -99,7 +99,11 @@ The global config (Trilium URL, token, dashboard port) lives outside the repo; r
 
 ## Dashboard
 
-Today only a static mockup exists: `dashboard/mockup/board.html`. The live dashboard is a separate plan. Until it is built, `factory-dashboard status` reports "not built" and setup mentions that once and continues.
+A local web app (Bun, under `dashboard/`) shows each factory repo's workstream: the Kanban board with live agents, the documents, validation rounds, agent transcripts and mockups. It reads Trilium over ETAPI and gets hook events from `factory-event`.
+
+- `factory-dashboard start [--port N] [--open]` starts it in the background (default port 7777, or `dashboardPort` in the global config) and registers the repo it is run from. On first run it installs the dashboard's dependencies (`bun install --frozen-lockfile` in `dashboard/`, output in `dashboard.log`).
+- `factory-dashboard status | open | stop | restart`. The pidfile and `dashboard.log` live in the global config directory.
+- It listens on 127.0.0.1 only, answers only requests addressed to `127.0.0.1`, `localhost` or `[::1]` on its port, accepts POSTs only as `application/json`, and serves only the Trilium notes the factory shows.
 
 ## Known caveats
 

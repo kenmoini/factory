@@ -16,6 +16,14 @@ const TYPES: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8",
 };
 
+/**
+ * Mockups are agent-written pages served from the dashboard's origin. The sandbox gives them an opaque origin, so their
+ * scripts still run (and forms, dialogs and popups work) but cannot call `/api/*` as the dashboard. SVG gets it too:
+ * opened directly, an SVG document runs its scripts like HTML.
+ */
+const SANDBOX = "sandbox allow-scripts allow-forms allow-modals allow-popups";
+const SANDBOXED = new Set([".html", ".htm", ".svg"]);
+
 const notFound = () => new Response("Not found", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
 
 /** True when `path` is `root` itself or lies under it. The trailing separator keeps `mockups-evil/` from passing as `mockups/`. */
@@ -60,11 +68,13 @@ export async function mockupsRoute(req: Request, deps: { repos: RepoRegistry }):
   }
 
   const file = Bun.file(target);
-  const headers = {
-    "Content-Type": TYPES[extname(target).toLowerCase()] ?? "application/octet-stream",
+  const ext = extname(target).toLowerCase();
+  const headers: Record<string, string> = {
+    "Content-Type": TYPES[ext] ?? "application/octet-stream",
     "Content-Length": String(file.size),
     "Cache-Control": "no-cache",
     "X-Content-Type-Options": "nosniff",
   };
+  if (SANDBOXED.has(ext)) headers["Content-Security-Policy"] = SANDBOX;
   return new Response(req.method === "HEAD" ? null : file, { headers });
 }

@@ -50,6 +50,28 @@ describe("TranscriptTailer", () => {
     await wait(() => t.state === "gone");
     expect(t.state).toBe("gone");
   });
+  test("lastGrowthAt follows the injected clock on each read that finds new bytes; found is set once tailing", async () => {
+    const p = join(dir, "grow.jsonl");
+    writeFileSync(p, line("one") + "\n");
+    let now = 1_000;
+    const t = new TranscriptTailer(p, () => {}, { ...opts, now: () => now });
+    expect(t.found).toBe(false);
+    expect(t.lastGrowthAt).toBeUndefined();
+    t.start();
+    expect(t.found).toBe(true);
+    expect(t.lastGrowthAt).toBe(1_000);
+    now = 5_000;
+    t.readMore(); // nothing new
+    expect(t.lastGrowthAt).toBe(1_000);
+    appendFileSync(p, line("two") + "\n");
+    t.readMore();
+    expect(t.lastGrowthAt).toBe(5_000);
+    t.stop();
+    const never = new TranscriptTailer(join(dir, "nope.jsonl"), () => {}, opts);
+    never.start();
+    expect(never.found).toBe(false);
+    never.stop();
+  });
   test("ring buffer caps at 2000", async () => {
     const p = join(dir, "big.jsonl");
     writeFileSync(p, Array.from({ length: 2100 }, (_, i) => line(`m${i}`)).join("\n") + "\n");

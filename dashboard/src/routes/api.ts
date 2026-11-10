@@ -4,7 +4,8 @@ import type { Poller } from "../trilium/poller";
 import { TriliumError, type EtapiNote } from "../trilium/client";
 import { labelsOf } from "../trilium/mapper";
 import type { TranscriptTailer } from "../agents/tailer";
-import type { HookEvent, TaskDetail } from "../shared/types";
+import { runInWorkstream } from "../shared/agents";
+import type { HookEvent, TaskDetail, WorkstreamSnapshot } from "../shared/types";
 import { handleEvent } from "./events";
 import { mockupsRoute } from "./mockups";
 import { streamRoute } from "./stream";
@@ -12,13 +13,22 @@ import { streamRoute } from "./stream";
 interface Ctx {
   deps: AppDeps; pollers: Map<string, Poller>; addRepo(path: string): RepoEntry | null;
   tailers: Map<string, TranscriptTailer>; lastTask: Map<string, HookEvent>; refresh(repoKey: string): void;
+  syncRepo(repoKey: string): void; followWorkstream(repoKey: string, slug: string): void; now?: () => number;
   heartbeatMs?: number;
 }
+/** What `/api/docs/:id` needs to answer before fetching the body: title and format are fetched when unknown (reviews). */
+type DocMeta = { title?: string; format?: "html" | "markdown"; modified: string };
 type Handler = (req: Request, url: URL, params: string[]) => Promise<Response> | Response;
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) => Response.json(body, { status, headers });
 const formatOf = (n: Pick<EtapiNote, "type" | "mime">): "html" | "markdown" =>
   n.type === "text" ? "html" : (n.mime ?? "").includes("markdown") ? "markdown" : "html";
+/**
+ * POSTs must say `application/json`: a cross-site page can send text/plain, form or multipart bodies without asking,
+ * but `application/json` needs a CORS preflight this server never grants.
+ */
+const isJson = (req: Request) => (req.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase() === "application/json";
+const unsupported = () => json({ error: "content type must be application/json" }, 415);
 
 export function createApi(ctx: Ctx) {
   const { deps, pollers } = ctx;
@@ -51,9 +61,13 @@ export function createApi(ctx: Ctx) {
     return json({ ok: true, pid: process.pid, uptimeSec: Math.round((Date.now() - startedAt) / 1000), version: "0.1.0", trilium, repos: deps.repos.list().map((r) => r.repoPath) });
   };
 
-  const listRepos: Handler = () => json({ repos: deps.repos.list().map(withWorkstreams) });
+  const listRepos: Handler = () => {
+    for (const r of deps.repos.list()) ctx.syncRepo(r.repoPath);
+    return json({ repos: deps.repos.list().map(withWorkstreams) });
+  };
 
   const addRepoRoute: Handler = async (req) => {
+    if (!isJson(req)) return unsupported();
     let path: unknown;
     try { path = ((await req.json()) as { path?: unknown })?.path; } catch { return json({ error: "invalid JSON body" }, 400); }
     if (typeof path !== "string" || !path) return json({ error: "path required" }, 400);
@@ -66,7 +80,7 @@ export function createApi(ctx: Ctx) {
     const poller = entry && pollers.get(entry.repoPath);
     if (!entry || !poller) return json({ error: "unknown repo" }, 404);
     const ws = url.searchParams.get("ws");
-    if (ws && ws !== poller.snapshot()?.workstream?.slug) await poller.selectWorkstream(ws);
+    if (ws && ws !== poller.snapshot()?.workstream?.slug) await poller.selectWorkstream(ws, { user: true });
     else if (!poller.snapshot()) await poller.refresh();
     const snap = poller.snapshot();
     const err = poller.lastError();
@@ -75,25 +89,50 @@ export function createApi(ctx: Ctx) {
     return snap ? json(snap) : json({ error: "no snapshot yet" }, 503);
   };
 
-  function findDoc(id: string) {
+  function findTask(noteId: string): { snap: WorkstreamSnapshot; task: WorkstreamSnapshot["tasks"][number] } | undefined {
     for (const p of pollers.values()) {
-      const d = p.snapshot()?.docs.find((x) => x.id === id);
+      const snap = p.snapshot();
+      const task = snap?.tasks.find((t) => t.id === noteId);
+      if (snap && task) return { snap, task };
+    }
+    return undefined;
+  }
+
+  /** The spec and approval notes `/api/tasks/:id` last returned, per task note id: readable through `/api/docs` while the task is on a board. */
+  const taskDocs = new Map<string, Map<string, DocMeta>>();
+
+  /**
+   * `/api/docs/:id` serves only notes the factory shows: a snapshot's docs (validation rounds included) and reviews,
+   * and the spec/approval of a task on a board. Anything else in Trilium is a 404, so the endpoint is not a read proxy.
+   */
+  function scopedDoc(id: string): DocMeta | undefined {
+    for (const p of pollers.values()) {
+      const snap = p.snapshot();
+      const d = snap?.docs.find((x) => x.id === id);
       if (d) return d;
+      const r = snap?.reviews.find((x) => x.id === id);
+      if (r) return { modified: r.modified };
+    }
+    for (const [taskNoteId, docs] of taskDocs) {
+      const d = docs.get(id);
+      if (d && findTask(taskNoteId)) return d;
     }
     return undefined;
   }
 
   const doc: Handler = async (req, _url, [id]) => {
-    let title = "", format: "html" | "markdown", modified: string;
-    const known = findDoc(id);
+    const known = scopedDoc(id);
+    if (!known) return json({ error: "not found" }, 404);
+    let { title, format } = known;
+    const { modified } = known;
     try {
-      if (known) ({ title, format, modified } = known);
-      else {
-        const n = await deps.client.getNote(id);
-        ({ title } = n); format = formatOf(n); modified = n.utcDateModified;
-      }
       const etag = `"${modified}"`;
       if (req.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers: { ETag: etag } });
+      if (title === undefined || format === undefined) {
+        const n = await deps.client.getNote(id);
+        title = n.title;
+        format = formatOf(n);
+      }
       const { content } = await deps.client.getContent(id);
       return json({ noteId: id, title, format, content, modified }, 200, { ETag: etag });
     } catch (e) {
@@ -107,28 +146,38 @@ export function createApi(ctx: Ctx) {
     return json({ error: "upstream error", status: e instanceof TriliumError ? e.status : undefined }, 502);
   }
 
+  /** `#round` as a number; a missing or malformed one ranks below every real round. */
+  const roundOf = (n: EtapiNote) => {
+    const r = parseInt(labelsOf(n).round ?? "", 10);
+    return Number.isNaN(r) ? -1 : r;
+  };
+
   const task: Handler = async (_req, _url, [id]) => {
-    let snap = null as ReturnType<Poller["snapshot"]>;
-    let found;
-    for (const p of pollers.values()) {
-      snap = p.snapshot();
-      found = snap?.tasks.find((t) => t.id === id);
-      if (found) break;
-    }
-    if (!snap || !found) return json({ error: "not found" }, 404);
+    const hit = findTask(id);
+    if (!hit) return json({ error: "not found" }, 404);
+    const { snap, task: found } = hit;
     const out: TaskDetail = {
       task: found,
       reviews: snap.reviews.filter((r) => r.taskId === found.taskId),
-      runs: snap.runs.filter((r) => r.taskId === found.taskId),
+      runs: snap.runs.filter((r) => r.taskId === found.taskId && runInWorkstream(r, snap.workstream?.slug)),
     };
     try {
-      const note = await deps.client.getNote(id);
-      const kids = await Promise.all(note.childNoteIds.slice(0, 20).map((c) => deps.client.getNote(c)));
-      for (const k of kids) {
-        const kind = labelsOf(k).factoryDoc;
-        if (kind === "task-spec" && !out.spec) out.spec = { content: (await deps.client.getContent(k.noteId)).content, format: formatOf(k) };
-        else if (kind === "approval" && !out.approval) out.approval = { content: (await deps.client.getContent(k.noteId)).content };
+      // the task's direct #factoryDoc children, however many runs and reviews sit beside them
+      const kids = await deps.client.search("#factoryDoc", { ancestorNoteId: id, ancestorDepth: "eq1" });
+      const spec = kids.find((k) => labelsOf(k).factoryDoc === "task-spec");
+      const approval = kids
+        .filter((k) => labelsOf(k).factoryDoc === "approval")
+        .sort((a, b) => roundOf(b) - roundOf(a) || b.utcDateModified.localeCompare(a.utcDateModified))[0];
+      const scoped = new Map<string, DocMeta>();
+      if (spec) {
+        out.spec = { content: (await deps.client.getContent(spec.noteId)).content, format: formatOf(spec) };
+        scoped.set(spec.noteId, { title: spec.title, format: formatOf(spec), modified: spec.utcDateModified });
       }
+      if (approval) {
+        out.approval = { content: (await deps.client.getContent(approval.noteId)).content };
+        scoped.set(approval.noteId, { title: approval.title, format: formatOf(approval), modified: approval.utcDateModified });
+      }
+      taskDocs.set(id, scoped);
     } catch (e) {
       return upstreamError(e);
     }
@@ -136,11 +185,13 @@ export function createApi(ctx: Ctx) {
   };
 
   const events: Handler = async (req) => {
+    if (!isJson(req)) return unsupported();
     let body: unknown;
     try { body = await req.json(); } catch { return json({ error: "invalid JSON body" }, 400); }
     return handleEvent(body, {
       repos: deps.repos, registry: deps.registry, hub: deps.hub, tailers: ctx.tailers,
       homeDir: deps.homeDir, addRepo: ctx.addRepo, refresh: ctx.refresh, lastTask: ctx.lastTask,
+      syncRepo: ctx.syncRepo, followWorkstream: ctx.followWorkstream, now: ctx.now,
     });
   };
 

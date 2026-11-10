@@ -36,14 +36,22 @@ describe("AgentRegistry", () => {
     expect(r.list().recent).toHaveLength(0);
     expect(r.get("b")).toBeUndefined();
   });
-  test("list(cwd) filters", () => {
+  test("list(repoKey) filters by the resolved project, not by cwd", () => {
     const r = new AgentRegistry();
-    r.start({ ...base, agentId: "a1" });
-    r.start({ ...base, cwd: "/r2", agentId: "a2" });
+    // a subagent working in a worktree reports that as its cwd; it still belongs to the repo it was posted for
+    const a1 = r.start({ ...base, cwd: "/r1/.factory/worktrees/demo", repoKey: "/r1", agentId: "a1" });
+    r.start({ ...base, cwd: "/r1", repoKey: "/r2", agentId: "a2" });
     r.stop("a2");
+    expect(a1.repoKey).toBe("/r1");
     expect(r.list("/r1").live.map((x) => x.agentId)).toEqual(["a1"]);
     expect(r.list("/r1").recent).toHaveLength(0);
-    expect(r.list("/r2").recent).toHaveLength(1);
+    expect(r.list("/r2").recent.map((x) => x.agentId)).toEqual(["a2"]);
+    expect(r.list("/r1/.factory/worktrees/demo").live).toHaveLength(0);
+    expect(r.list().live).toHaveLength(1);
+  });
+  test("[task:none] leaves taskNoteId undefined", () => {
+    const r = new AgentRegistry();
+    expect(r.start({ ...base, agentId: "a1", description: "codebase-examiner examine [task:none]" }).taskNoteId).toBeUndefined();
   });
   test("onEvict fires for cap and TTL evictions", () => {
     let t = 1_000_000;

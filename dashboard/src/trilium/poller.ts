@@ -14,6 +14,8 @@ export class Poller {
   private projectId: string | undefined;
   private activeSlug: string | undefined;
   private intervalMs: number;
+  /** True once the user picked a workstream in the UI (`/api/state?ws=`); config and event changes no longer move this poller. */
+  userSelected = false;
 
   constructor(private repo: RepoEntry, private deps: PollerDeps, opts: { intervalMs?: number } = {}) {
     this.intervalMs = opts.intervalMs ?? 3000;
@@ -36,8 +38,14 @@ export class Poller {
   snapshot(): WorkstreamSnapshot | null { return this.snap; }
   lastError(): string | null { return this.err; }
 
-  selectWorkstream(slug: string): Promise<boolean> {
+  /** The workstream slug asked for (the snapshot shows the project's first workstream when no note has this slug). */
+  activeWorkstream(): string | undefined { return this.activeSlug; }
+
+  /** `user`: an explicit choice in the UI. A refresh already in flight (for the old slug) is waited out, then one runs for this slug. */
+  async selectWorkstream(slug: string, opts: { user?: boolean } = {}): Promise<boolean> {
+    if (opts.user) this.userSelected = true;
     this.activeSlug = slug;
+    if (this.inFlight) await this.inFlight;
     return this.refresh();
   }
 
@@ -89,6 +97,7 @@ export class Poller {
       this.snap = {
         project: toProject(projectNote),
         workstream: wsNote ? toWorkstream(wsNote) : null,
+        workstreams: wsNotes.map(toWorkstream),
         milestones: milestones.map(toMilestone),
         tasks: tasks.map(toTask),
         docs,

@@ -1,3 +1,4 @@
+import { taskNoteIdOf } from "../shared/agents";
 import type { LiveAgent } from "../shared/types";
 
 export class AgentRegistry {
@@ -23,18 +24,19 @@ export class AgentRegistry {
     this.now = opts.now ?? Date.now;
   }
 
-  start(e: { agentId: string; agentType: string; cwd: string; sessionId?: string; description?: string; model?: string; transcriptPath?: string }): LiveAgent {
+  start(e: { agentId: string; agentType: string; cwd: string; repoKey?: string; sessionId?: string; description?: string; model?: string; transcriptPath?: string }): LiveAgent {
     this.recentIds = this.recentIds.filter((id) => id !== e.agentId);
     const agent: LiveAgent = {
       agentId: e.agentId, agentType: e.agentType, cwd: e.cwd,
       startedAt: new Date(this.now()).toISOString(), stepCount: 0,
     };
+    if (e.repoKey) agent.repoKey = e.repoKey;
     if (e.sessionId) agent.sessionId = e.sessionId;
     if (e.description) agent.description = e.description;
     if (e.model) agent.model = e.model;
     if (e.transcriptPath) agent.transcriptPath = e.transcriptPath;
-    const m = e.description?.match(/\[task:([^\]]+)\]/);
-    if (m) agent.taskNoteId = m[1];
+    const task = taskNoteIdOf(e.description);
+    if (task) agent.taskNoteId = task;
     this.agents.set(e.agentId, agent);
     return agent;
   }
@@ -68,12 +70,13 @@ export class AgentRegistry {
     });
   }
 
-  list(cwd?: string): { live: LiveAgent[]; recent: LiveAgent[] } {
+  /** All agents, or those of one repo (`repoKey`, the event's resolved project; not `cwd`, which may be a worktree). */
+  list(repoKey?: string): { live: LiveAgent[]; recent: LiveAgent[] } {
     this.prune();
     const live: LiveAgent[] = [];
     const recent: LiveAgent[] = [];
     for (const a of this.agents.values()) {
-      if (cwd && a.cwd !== cwd) continue;
+      if (repoKey && a.repoKey !== repoKey) continue;
       (a.finishedAt ? recent : live).push(a);
     }
     const newest = (x: LiveAgent, y: LiveAgent) => (y.finishedAt && x.finishedAt && y.finishedAt !== x.finishedAt ? y.finishedAt.localeCompare(x.finishedAt) : y.startedAt.localeCompare(x.startedAt));

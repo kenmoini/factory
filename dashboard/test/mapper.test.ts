@@ -74,6 +74,12 @@ describe("mappers", () => {
     expect(toAgentRun(load("runs")[0])).toMatchObject({ id: "run1", agentType: "builder", agentId: "a1", status: "running", taskId: "T-002", startedAt: "2026-11-10T10:00:00Z" });
     expect(toAgentRun(load("runs")[0]).endedAt).toBeUndefined();
   });
+  test("toAgentRun maps #workstream; a run without the label has none", () => {
+    expect(toAgentRun(load("runs")[0]).workstream).toBe("demo");
+    const n = structuredClone(load("runs")[0]);
+    n.attributes = n.attributes.filter((a) => a.name !== "workstream");
+    expect(toAgentRun(n).workstream).toBeUndefined();
+  });
 });
 
 describe("fingerprint", () => {
@@ -91,5 +97,21 @@ describe("fingerprint", () => {
     const changed = structuredClone(notes);
     changed[0].attributes.find((a) => a.name === "status")!.value = "blocked";
     expect(fingerprint(changed)).not.toBe(fingerprint(notes));
+  });
+  test("changes when any label changes, not just status/agentId/round", () => {
+    const review = notes.findIndex((n) => n.noteId === "r2");
+    const verdict = structuredClone(notes);
+    verdict[review].attributes.find((a) => a.name === "verdict")!.value = "PASS";
+    expect(fingerprint(verdict)).not.toBe(fingerprint(notes));
+    const deps = structuredClone(notes);
+    deps[0].attributes.find((a) => a.name === "dependsOn")!.value = "T-009";
+    expect(fingerprint(deps)).not.toBe(fingerprint(notes));
+    const added = structuredClone(notes);
+    added[0].attributes.push({ attributeId: "zz", noteId: added[0].noteId, type: "label", name: "escalation", value: "fix-cap", position: 99, isInheritable: false });
+    expect(fingerprint(added)).not.toBe(fingerprint(notes));
+  });
+  test("label order within a note does not matter", () => {
+    const shuffled = structuredClone(notes).map((n) => ({ ...n, attributes: [...n.attributes].reverse() }));
+    expect(fingerprint(shuffled)).toBe(fingerprint(notes));
   });
 });

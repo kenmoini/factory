@@ -8,6 +8,10 @@ const CAP = 2000;
 export class TranscriptTailer {
   readonly steps: Step[] = [];
   state: "waiting" | "tailing" | "stopped" | "gone" = "waiting";
+  /** True once the file was found and tailing began (it stays true after `stop()`). */
+  found = false;
+  /** When a read last found new bytes (the injected clock), for the idle sweep; undefined until then. */
+  lastGrowthAt?: number;
   private count = 0;
   private offset = 0;
   private rest = "";
@@ -19,16 +23,18 @@ export class TranscriptTailer {
   private pollMs: number;
   private retryMs: number;
   private maxRetries: number;
+  private now: () => number;
 
   private resolve: () => string | null;
   path: string | null;
 
-  constructor(pathOrResolve: string | (() => string | null), private onStep: (s: Step) => void, opts: { pollMs?: number; retryMs?: number; maxRetries?: number } = {}) {
+  constructor(pathOrResolve: string | (() => string | null), private onStep: (s: Step) => void, opts: { pollMs?: number; retryMs?: number; maxRetries?: number; now?: () => number } = {}) {
     this.resolve = typeof pathOrResolve === "function" ? pathOrResolve : () => pathOrResolve;
     this.path = this.resolve();
     this.pollMs = opts.pollMs ?? 500;
     this.retryMs = opts.retryMs ?? 1000;
     this.maxRetries = opts.maxRetries ?? 30;
+    this.now = opts.now ?? Date.now;
   }
 
   start(): void {
@@ -45,6 +51,7 @@ export class TranscriptTailer {
 
   private begin(): void {
     this.state = "tailing";
+    this.found = true;
     try {
       this.watcher = watch(this.path!, () => this.readMore());
       this.watcher.on("error", () => { this.watcher?.close(); this.watcher = undefined; });
@@ -73,6 +80,7 @@ export class TranscriptTailer {
         const buf = Buffer.alloc(size - this.offset);
         const n = readSync(fd, buf, 0, buf.length, this.offset);
         this.offset += n;
+        if (n > 0) this.lastGrowthAt = this.now();
         chunk = this.decoder.write(buf.subarray(0, n));
       } finally { closeSync(fd); }
       const { steps, rest } = parseTranscript(this.rest + chunk);

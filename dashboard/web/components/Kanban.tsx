@@ -1,4 +1,5 @@
 import { Fragment, useMemo } from "react";
+import { runInWorkstream } from "../../src/shared/agents";
 import { COLUMN_ORDER, COLUMN_TITLES, columnFor, sortTasks } from "../../src/shared/columns";
 import type { AgentRun, Column, LiveAgent, Milestone, Review, Reviewer, Task, WorkstreamSnapshot } from "../../src/shared/types";
 import { formatElapsed, useNow } from "../lib/clock";
@@ -134,7 +135,8 @@ export function Kanban({ snapshot }: { snapshot: WorkstreamSnapshot }) {
       for (const x of xs) if (x.taskId) m.set(x.taskId, [...(m.get(x.taskId) ?? []), x]);
       return m;
     };
-    const runsByTask = group(snapshot.runs);
+    // #taskId repeats across workstreams (each starts at T-001): only this workstream's runs (and unlabelled ones)
+    const runsByTask = group(snapshot.runs.filter((r) => runInWorkstream(r, snapshot.workstream?.slug)));
     const reviewsByTask = group(snapshot.reviews);
     const milestones = new Map(snapshot.milestones.map((m) => [m.milestoneId, m]));
     const sorted = sortTasks(snapshot.tasks, snapshot.milestones);

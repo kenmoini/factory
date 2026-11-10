@@ -1,9 +1,11 @@
-import { resolve, sep, join } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve, sep } from "node:path";
 import { readMeta, resolveTranscriptPath } from "../agents/transcript-path";
 import type { AgentRegistry } from "../agents/registry";
 import { TranscriptTailer } from "../agents/tailer";
 import type { EventHub } from "../hub";
 import type { RepoEntry, RepoRegistry } from "../repos";
+import { taskNoteIdOf } from "../shared/agents";
 import type { HookEvent, LiveAgent } from "../shared/types";
 
 export interface EventDeps {
@@ -15,12 +17,23 @@ export interface EventDeps {
   addRepo: (p: string) => RepoEntry | null;
   refresh: (repoKey: string) => void;
   lastTask?: Map<string, HookEvent>;
+  /** Re-reads a registered repo's `.factory/config.json` (and follows a changed `activeWorkstream`). */
+  syncRepo?: (repoKey: string) => void;
+  /** Points the repo's poller at the envelope's `workstream`, unless the user picked one. */
+  followWorkstream?: (repoKey: string, slug: string) => void;
+  now?: () => number;
 }
 
 const ok = () => new Response(null, { status: 204 });
 const str = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined);
 const SAFE = /^[A-Za-z0-9_-]+$/;
-const TASK_TAG = /\[task:([^\]]+)\]/;
+
+/** `path` resolved, if it lies under `~/.claude/projects` (where Claude Code keeps transcripts); otherwise undefined. */
+function underProjects(homeDir: string, path: string | undefined): string | undefined {
+  if (!homeDir || !path) return undefined;
+  const abs = resolve(path);
+  return abs.startsWith(join(homeDir, ".claude", "projects") + sep) ? abs : undefined;
+}
 
 export function handleEvent(body: unknown, deps: EventDeps): Response {
   if (!body || typeof body !== "object" || Array.isArray(body)) return Response.json({ error: "object body required" }, { status: 400 });
@@ -29,18 +42,73 @@ export function handleEvent(body: unknown, deps: EventDeps): Response {
     return Response.json({ error: "event and project required" }, { status: 400 });
   }
   const repoKey = resolve(b.project);
-  if (!deps.repos.get(repoKey) && !deps.addRepo(repoKey)) return ok();
+  if (deps.repos.get(repoKey)) deps.syncRepo?.(repoKey);
+  else if (!deps.addRepo(repoKey)) return ok();
+  const ws = str(b.workstream);
+  if (ws) deps.followWorkstream?.(repoKey, ws);
   const payload = (b.payload && typeof b.payload === "object" ? b.payload : {}) as Record<string, unknown>;
 
   switch (b.event) {
     case "subagent-start": return onStart(repoKey, payload, deps);
     case "subagent-stop": return onStop(repoKey, payload, deps);
-    case "stage": case "task": case "agent": case "session-start":
+    case "session-start":
+      endOtherSessions(repoKey, payload, deps);
+      deps.refresh(repoKey);
+      return ok();
+    case "stage": case "task": case "agent":
       if ((b.event === "task" || b.event === "agent") && b.task) deps.lastTask?.set(repoKey, b as HookEvent);
       deps.refresh(repoKey);
       return ok();
     default: return ok();
   }
+}
+
+/** Reads what is left of the agent's transcript, stops its tailer and the agent, and publishes `agent stop`. */
+export function stopAgent(agentId: string, deps: Pick<EventDeps, "registry" | "hub" | "tailers">, patch: { transcriptPath?: string } = {}): LiveAgent | undefined {
+  const tailer = deps.tailers.get(agentId);
+  tailer?.readMore();
+  tailer?.stop();
+  const agent = deps.registry.stop(agentId, patch);
+  if (agent?.repoKey) deps.hub.publish(agent.repoKey, { type: "agent", data: { op: "stop", agent: { ...agent } } });
+  return agent;
+}
+
+/**
+ * A new Claude Code session in the repo (`source: "startup"`, or no source and a `session_id`) means the previous
+ * session's subagents will never send their stop: mark the repo's live agents of other sessions stopped.
+ * `clear` and `compact` keep the session's agents.
+ */
+function endOtherSessions(repoKey: string, p: Record<string, unknown>, deps: EventDeps): void {
+  const source = str(p.source), sessionId = str(p.session_id);
+  if (!(source === "startup" || (source === undefined && sessionId))) return;
+  for (const a of deps.registry.list(repoKey).live) if (a.sessionId !== sessionId) stopAgent(a.agentId, deps);
+}
+
+/** A tailer whose steps bump the agent's step count and are published; the first time the file is seen its meta back-fills description, task and model. */
+function makeTailer(agentId: string, repoKey: string, source: string | (() => string | null), deps: EventDeps): TranscriptTailer {
+  let metaReread = false;
+  const tailer: TranscriptTailer = new TranscriptTailer(source, (step) => {
+    const cur = deps.registry.get(agentId);
+    if (!cur) return;
+    const patch: Partial<LiveAgent> = { stepCount: cur.stepCount + 1 };
+    if (tailer.path && cur.transcriptPath !== tailer.path) patch.transcriptPath = tailer.path;
+    if (!metaReread && tailer.path) {
+      metaReread = true; // once, the first time the file is seen
+      const m = readMeta(tailer.path);
+      if (m?.description && !cur.description) patch.description = m.description;
+      // the hook's description may lack the tag that the prompt (and so the meta file) carries
+      const task = taskNoteIdOf(patch.description ?? cur.description) ?? taskNoteIdOf(m?.description);
+      if (task && !cur.taskNoteId) patch.taskNoteId = task;
+      if (m?.model && !cur.model) patch.model = m.model;
+    }
+    const updated = deps.registry.touch(agentId, patch);
+    // stepCount alone rides on the step events; a back-filled task, model or description changes the card line
+    if (updated && (patch.description || patch.taskNoteId || patch.model)) {
+      deps.hub.publish(repoKey, { type: "agent", data: { op: "update", agent: { ...updated } } });
+    }
+    deps.hub.publish(repoKey, { type: "step", data: { agentId, step } });
+  }, { now: deps.now });
+  return tailer;
 }
 
 function onStart(repoKey: string, p: Record<string, unknown>, deps: EventDeps): Response {
@@ -51,40 +119,26 @@ function onStart(repoKey: string, p: Record<string, unknown>, deps: EventDeps): 
   deps.tailers.get(agentId)?.stop();
   deps.tailers.delete(agentId);
 
-  const resolvePath = () => resolveTranscriptPath({ homeDir: deps.homeDir, cwd, agentId, sessionId });
+  // 1. next to the session transcript Claude Code names: <projects>/<slug>/<session>.jsonl → <projects>/<slug>/<session>/subagents/
+  // 2. under the project's slug; 3. under the cwd's slug (a subagent's cwd may be a worktree). Re-run on each retry tick.
+  const session = underProjects(deps.homeDir, str(p.transcript_path));
+  const fromSession = session && sessionId && SAFE.test(sessionId) ? join(dirname(session), sessionId, "subagents", `agent-${agentId}.jsonl`) : undefined;
+  const resolvePath = (): string | null => {
+    if (fromSession && existsSync(fromSession)) return fromSession;
+    return resolveTranscriptPath({ homeDir: deps.homeDir, cwd: repoKey, agentId, sessionId })
+      ?? (cwd !== repoKey ? resolveTranscriptPath({ homeDir: deps.homeDir, cwd, agentId, sessionId }) : null);
+  };
   const path = resolvePath();
   const meta = path ? readMeta(path) : null;
   const agent = deps.registry.start({
-    agentId, agentType: str(p.agent_type) ?? meta?.agentType ?? "unknown", cwd, sessionId,
+    agentId, agentType: str(p.agent_type) ?? meta?.agentType ?? "unknown", cwd, repoKey, sessionId,
     description: str(p.description) ?? meta?.description, model: str(p.model) ?? meta?.model,
     transcriptPath: path ?? undefined,
   });
   // publish start before the tailer's first synchronous read can publish steps
   deps.hub.publish(repoKey, { type: "agent", data: { op: "start", agent: { ...agent } } });
   if (deps.homeDir) {
-    // re-run the lookup on each retry tick so a late-appearing transcript is still found
-    let metaReread = false;
-    const tailer: TranscriptTailer = new TranscriptTailer(resolvePath, (step) => {
-      const cur = deps.registry.get(agentId);
-      if (!cur) return;
-      const patch: Partial<LiveAgent> = { stepCount: cur.stepCount + 1 };
-      if (!cur.transcriptPath && tailer.path) patch.transcriptPath = tailer.path;
-      if (!metaReread && tailer.path) {
-        metaReread = true; // once, the first time the file is seen
-        const m = readMeta(tailer.path);
-        if (m?.description && !cur.description) patch.description = m.description;
-        // the hook's description may lack the tag that the prompt (and so the meta file) carries
-        const t = (patch.description ?? cur.description)?.match(TASK_TAG) ?? m?.description?.match(TASK_TAG);
-        if (t && !cur.taskNoteId) patch.taskNoteId = t[1];
-        if (m?.model && !cur.model) patch.model = m.model;
-      }
-      const updated = deps.registry.touch(agentId, patch);
-      // stepCount alone rides on the step events; a back-filled task, model or description changes the card line
-      if (updated && (patch.description || patch.taskNoteId || patch.model)) {
-        deps.hub.publish(repoKey, { type: "agent", data: { op: "update", agent: { ...updated } } });
-      }
-      deps.hub.publish(repoKey, { type: "step", data: { agentId, step } });
-    });
+    const tailer = makeTailer(agentId, repoKey, resolvePath, deps);
     deps.tailers.set(agentId, tailer);
     tailer.start();
   }
@@ -94,22 +148,16 @@ function onStart(repoKey: string, p: Record<string, unknown>, deps: EventDeps): 
 function onStop(repoKey: string, p: Record<string, unknown>, deps: EventDeps): Response {
   const agentId = str(p.agent_id);
   if (!agentId || !deps.registry.get(agentId)) return ok();
-  let tailer = deps.tailers.get(agentId);
-  const given = str(p.agent_transcript_path);
-  const root = deps.homeDir ? join(deps.homeDir, ".claude", "projects") + sep : null;
-  if (!tailer && given && root && resolve(given).startsWith(root)) {
-    tailer = new TranscriptTailer(resolve(given), (step) => {
-      const cur = deps.registry.get(agentId);
-      if (cur) deps.registry.touch(agentId, { stepCount: cur.stepCount + 1 });
-      deps.hub.publish(repoKey, { type: "step", data: { agentId, step } });
-    });
+  const given = underProjects(deps.homeDir, str(p.agent_transcript_path));
+  const old = deps.tailers.get(agentId);
+  // Claude Code names the transcript at stop: when the start lookup missed it or found another file, tail that one instead
+  if (given && (!old || !old.found || old.path !== given)) {
+    old?.stop();
+    deps.registry.touch(agentId, { stepCount: 0 }); // the replacement counts from its own first step
+    const tailer = makeTailer(agentId, repoKey, given, deps);
     deps.tailers.set(agentId, tailer);
-    tailer.start();
+    tailer.start(); // reads the whole file synchronously when it exists
   }
-  tailer?.readMore();
-  tailer?.stop();
-  const tp = given && root && resolve(given).startsWith(root) ? resolve(given) : undefined;
-  const agent = deps.registry.stop(agentId, { transcriptPath: tp });
-  if (agent) deps.hub.publish(repoKey, { type: "agent", data: { op: "stop", agent: { ...agent } } });
+  stopAgent(agentId, deps, { transcriptPath: given });
   return ok();
 }

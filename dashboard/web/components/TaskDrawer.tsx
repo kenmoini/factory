@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { runInWorkstream } from "../../src/shared/agents";
 import { COLUMN_TITLES, columnFor } from "../../src/shared/columns";
 import type { AgentRun, LiveAgent, Review, Reviewer, Task, TaskDetail, WorkstreamSnapshot } from "../../src/shared/types";
 import { formatElapsed, useNow } from "../lib/clock";
@@ -208,7 +209,9 @@ export function TaskDrawer({ snapshot }: { snapshot: WorkstreamSnapshot | null }
 
   // reviews and runs come from the snapshot when it has the task, so they stay live between fetches
   const reviews = useMemo(() => (snapTask && snapshot ? snapshot.reviews.filter((r) => r.taskId === snapTask.taskId) : detail?.reviews ?? []), [snapshot, snapTask, detail]);
-  const runs = useMemo(() => (snapTask && snapshot ? snapshot.runs.filter((r) => r.taskId === snapTask.taskId) : detail?.runs ?? []), [snapshot, snapTask, detail]);
+  const runs = useMemo(() => (snapTask && snapshot
+    ? snapshot.runs.filter((r) => r.taskId === snapTask.taskId && runInWorkstream(r, snapshot.workstream?.slug))
+    : detail?.runs ?? []), [snapshot, snapTask, detail]);
   const agents = useMemo(() => Object.values(liveById).filter((a) => !a.finishedAt && !!id && a.taskNoteId === id), [liveById, id]);
   const milestone = task ? snapshot?.milestones.find((m) => m.milestoneId === task.milestoneId) : undefined;
   const specHtml = useMemo(() => (detail?.spec ? toSafeHtml(detail.spec.content, detail.spec.format) : undefined), [detail]);
