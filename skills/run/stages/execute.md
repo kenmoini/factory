@@ -26,9 +26,9 @@ runs `factory-worktree ensure` and re-sets `#worktree` if `path` differs from it
 ## Ledger
 
 `<repoPath>/.factory/state.json` (execute-loop § Ledger): rewrite whole at every transition, before the new phase's
-first action, setting the fields each phase lists. At start and after compaction read it, then `get_attributes(<tn>)`;
-Trilium wins: rebuild from the labels (lost `prevHead` → `#base`), log `ledger resynced from Trilium`, resume per the
-resume table (first matching row: the REVIEW bump window comes first).
+first action, setting the fields each phase lists. At start and after compaction: read it and `get_attributes(<tn>)`;
+match the resume table's first matching row (bump window first) against the ledger as read; then Trilium wins: rebuild
+from the labels (lost `prevHead` → `#base`), log `ledger resynced from Trilium`; resume at the matched row.
 
 ## SELECT
 
@@ -90,8 +90,9 @@ NEEDS-HUMAN(`builder-blocked`). Print: `<T> <title>: BUILD (round 0)`.
 
 Follow execute-loop.md § REVIEW.
 1. `n = #round + 1`; `prevHead` = `""` from BUILD, `#head` from FIX; ledger `phase:"REVIEW"`, `round`, `prevHead`;
-   then head → `set_attribute(<tn>, round=<n>, head=<sha>)`; then status(reviewing). Resume (`reviewing`, or the
-   resume table's bump window): `n = #round`, keep `#head`/`prevHead`, skip these writes.
+   then head → `set_attribute(<tn>, round=<n>, head=<sha>)`; then status(reviewing). Resume: `n = #round`, keep
+   `prevHead`; `reviewing` → keep `#head`, skip these writes; bump window (resume table) → re-set `#head` only,
+   status(reviewing), then continue.
 2. `factory-review-package <wt> <from> <#head> --out <taskDir>/review-R<n>.diff`, `<from>` = non-empty `prevHead`
    else `#base` (resume reuses an existing diff); non-zero exit → report `error`, stop.
 3. `<open>` = `<taskDir>/open-findings-R<n-1>-human.json`, else `…-R<n-1>.json`, if present; none → drop
@@ -237,10 +238,9 @@ Follow execute-loop.md § FINISH: every task done → Completion. Print: `<slug>
 ## Loop control
 
 After DONE → SELECT. Stop on NEEDS-HUMAN, FINISH, SELECT's stops, any other stop above, or a user interrupt; never
-ask whether to continue. Each transition prints its status line and sends `factory-event task --task <T> --status
-<#status> --workstream <slug> </dev/null` (status(S)). One task at a time. A stop other than FINISH (SOP 2): log
-`stage stopped — <reason>`; `factory-event stage --stage execute --status stopped --workstream <slug> </dev/null`.
-After compaction: the Ledger check before acting.
+ask whether to continue. Each transition prints its status line (status(S) or its `Print:`). One task at a time.
+A stop other than FINISH (SOP 2): log `stage stopped — <reason>`;
+`factory-event stage --stage execute --status stopped --workstream <slug> </dev/null`. After compaction: the Ledger check before acting.
 
 ## Completion
 

@@ -12,7 +12,7 @@ The state machine run by the `execute` stage, one task at a time. Labels, titles
   ledger field.
 - Trilium tool names below omit the `mcp__trilium__` prefix. `set_attribute(<note>, a=x, b=y)` = one call per label. Every search also carries `#project='<repoName>'` (before any
   `orderBy`/`limit`). `<#base>`, `<#lintCmd>`, … = the current value of that label on the note it lives on (schema).
-- bin commands are on the Bash PATH (else `$PLUGIN_ROOT/bin/<name>`). Each prints one JSON line.
+- bin commands are on the Bash PATH (else SKILL.md's fallback). Each prints one JSON line.
 - Shared steps:
   - **head**: `git -C <wt> rev-parse HEAD`.
   - **status(S)**: `set_attribute(<tn>, status=S)`; `factory-event task --task <T> --status S --workstream <slug> </dev/null`;
@@ -21,10 +21,10 @@ The state machine run by the `execute` stage, one task at a time. Labels, titles
     `printf '{"agentType":"%s","agentId":"%s"}' <agentType> <agentId> | factory-event agent --task <T> --status <s> --workstream <slug>`,
     `<s>` = `failed` for a failed run, else `done`.
   - **log(msg)**: `append_to_note(<log>, "- <ts> [execute] <T> <msg>")`.
-  - **doc(title, template, labels)**: find-or-create `<title>` under `<tn>` (`create_note` type `text` /
-    `set_note_content`), body from `$PLUGIN_ROOT/skills/run/templates/<template>.md`, then `set_attribute` the labels
-    plus `#project=<repoName>`, `#workstream=<slug>`, `#taskId=<T>`. Exception: an existing `Human Decision` is
-    append-only: `append_to_note` a new section, then re-set its labels.
+  - **doc(title, template, labels)**: find-or-create `<title>` under `<tn>` (schema), body from
+    `$PLUGIN_ROOT/skills/run/templates/<template>.md`, then `set_attribute` the labels plus `#project=<repoName>`,
+    `#workstream=<slug>`, `#taskId=<T>`. Exception: an existing `Human Decision` is append-only: `append_to_note` a new
+    section, then re-set its labels.
 
 ## Preconditions
 
@@ -49,17 +49,17 @@ The state machine run by the `execute` stage, one task at a time. Labels, titles
 {"workstream": "<slug>", "task": {"id": "T-001", "noteId": "<tn>"}, "phase": "SELECT|SPEC|BUILD|REVIEW|FIX|APPROVE|MERGE|DONE|NEEDS-HUMAN", "round": 0, "base": "<sha>", "head": "<sha>", "prevHead": "<sha>", "agents": {"builder": "<agentId>"}, "updatedAt": "<ts>"}
 ```
 
-- Rewrite the whole file (Write) at every transition, before the new phase's first action. `task` is `null` in SELECT
+- Rewrite the whole file at every transition, before the new phase's first action. `task` is `null` in SELECT
   before a pick and after FINISH (`phase: "DONE"`). `round`/`base`/`head`/`agents.builder` mirror `#round`, `#base`,
   `#head`, `#builderAgentId`. `prevHead` is ledger-only: the head the previous review saw, start of the next scoped
   diff (`""` = none; if lost, use `#base`).
-- Trilium wins: on start or after compaction, if the ledger disagrees with the task labels, rebuild it from them:
-  labels override only label-backed fields; ledger-only fields (`prevHead`, `agents` other than `builder`) are kept;
-  `agents.builder` is rebuilt from `#builderAgentId`.
+- Trilium wins: on start or after compaction, read the ledger, match the resume table, then, if the ledger disagrees
+  with the task labels, rebuild it from them: labels override only label-backed fields; ledger-only fields
+  (`prevHead`, `agents` other than `builder`) are kept; `agents.builder` is rebuilt from `#builderAgentId`.
 
-| task `#status` | resume at (first matching row) |
+| task `#status` | resume at (first matching row; ledger as read, before the rebuild) |
 |---|---|
-| `building`/`fixing`, ledger `phase: "REVIEW"` and `round` = `#round` (bump window: REVIEW step 1 stopped after the bump) | status(reviewing), then REVIEW resume branch of step 1; never BUILD/FIX at that round |
+| `building`/`fixing`, ledger `phase: "REVIEW"`, `round` = `#round` (bump window: step 1 stopped after the bump) | head → `set_attribute(<tn>, head=<head>)` (builder idle), status(reviewing), then REVIEW resume branch of step 1; never BUILD/FIX at that round |
 | `spec` | SPEC step 1 |
 | `building` | keep `#base`. `state.agents.builder` set → `SendMessage(to: <state.agents.builder>, "[task:<tn>] Continue from your report <taskDir>/report.md and finish the task. Return the same contract.")`, then BUILD step 5. No id or SendMessage error → fresh builder: BUILD step 3 prompt, `Task: Continue <T> <title> from your report <taskDir>/report.md [task:<tn>]` (step 2 first if `report.md` is missing), then steps 4–5 |
 | `reviewing` | REVIEW, resume branch of step 1 |
@@ -94,7 +94,7 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
 ## SELECT
 
 1. `search_notes("#factoryTask #workstream='<slug>' #status!=todo #status!=done limit 1")`. A `needs-human` task →
-   NEEDS-HUMAN step 2 (report, stop).
+   NEEDS-HUMAN step 2.
 2. `get_attributes(<ws>)`: `#wsStatus=paused` → AskUserQuestion `Continue executing / Stop` (quote the Factory Log lines
    that paused it). Continue → `set_attribute(<ws>, wsStatus=executing)`; Stop → stop.
 3. Step 1 found another in-flight task → resume per the table.
@@ -157,8 +157,8 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
 2. Diff: on resume reuse `<taskDir>/review-R<n>.diff` if it exists. Otherwise
    `factory-review-package <wt> <from> <#head> --out <taskDir>/review-R<n>.diff` with `<from>` = `state.prevHead` when
    non-empty (scoped), else `#base`. Prints `{path, commits, filesChanged}`; non-zero exit → report `error`, stop.
-3. `open=`: `<taskDir>/open-findings-R<n-1>-human.json` if it exists, else `<taskDir>/open-findings-R<n-1>.json` if it
-   exists, else omit. run-start per reviewer, then ONE assistant message with the Agent calls (`factory:` + `security-reviewer`,
+3. `open=`: `<taskDir>/open-findings-R<n-1>-human.json`, else `<taskDir>/open-findings-R<n-1>.json`, if present; else
+   omit. run-start per reviewer, then ONE assistant message with the Agent calls (`factory:` + `security-reviewer`,
    `ux-reviewer`, `ui-design-reviewer`, `code-reviewer`), `run_in_background: false`, descriptions
    `<agent> <T> R<n> [task:<tn>]`. Wait for all. Prompt (Inputs per agent from the protocol table):
    ```
@@ -194,7 +194,7 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
 ## APPROVE
 
 1. status(approving).
-2. `factory-review-package <wt> <#base> <#head> --out <taskDir>/approval.diff` (full package).
+2. `factory-review-package <wt> <#base> <#head> --out <taskDir>/approval.diff`.
 3. Write `<taskDir>/reviews-R<n>.json` = array of the four `review-R<n>-<reviewer>.json`.
 4. run-start(approver); Agent `factory:approver`, description `approver <T> R<n> [task:<tn>]`, prompt:
    ```
@@ -216,7 +216,7 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
      user and stop (never auto-revert; SELECT step 2 asks before continuing).
    - `{"result":"up-to-date"}` → DONE(`git -C <repoPath> rev-parse HEAD`).
    - `{"result":"conflict","files"}` → conflict sub-flow.
-   - `{"result":"dirty","files"}` (uncommitted changes on `main`: touch nothing, show them) or `{"result":"error","message"}`
+   - `{"result":"dirty","files"}` (touch nothing, show them) or `{"result":"error","message"}`
      → report, stop (status stays `merging`).
 3. Conflict sub-flow:
    1. `k` = highest existing `<taskDir>/conflict-<k>.txt` + 1 (1 if none); `k > 2` → NEEDS-HUMAN(`merge-conflict`).
@@ -308,5 +308,5 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
 ## Loop control
 
 After DONE go to SELECT. Stop on NEEDS-HUMAN, FINISH, any stop condition above, or a user interrupt. Every transition
-that calls status(S) prints the status line; `blocked` and FINISH print their own. One task at a time; the four
+that calls status(S) prints the status line; FINISH prints its own. One task at a time; the four
 reviewers are the only parallel agents and run only while the builder is idle.
