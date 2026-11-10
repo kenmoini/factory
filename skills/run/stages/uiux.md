@@ -3,7 +3,8 @@
 Decides with the user whether the workstream has UI work; if so, agrees the framework and the UX of each user story,
 optionally shows 2–3 visual options as mockups served by the dashboard, and ends with an approved `UI-UX Spec`.
 Notation: `<projectNoteId>` = `factory.projectNoteId`; `<Factory Log>` = its child titled `Factory Log`; `<slug>` =
-the `--workstream` value, else `factory.activeWorkstream`; `<ws>` = its note id; `<docs>` =
+the `--workstream` value, else live `factory-config get activeWorkstream --repo "<repoPath>"` (never the preflight
+snapshot: brainstorm may have changed it); `<ws>` = its note id; `<docs>` =
 `<repoPath>/.factory/workstreams/<slug>/docs`; `<mock>` = `<repoPath>/.factory/mockups/<slug>`; `<ISO ts>` =
 `date -u +%Y-%m-%dT%H:%M:%SZ`. Every write follows `$PLUGIN_ROOT/skills/run/references/trilium-schema.md`.
 
@@ -26,6 +27,7 @@ the `--workstream` value, else `factory.activeWorkstream`; `<ws>` = its note id;
 2. `mcp__trilium__get_attributes(<ws>)` shows `#stageBrainstorm=done`. Else refuse `Missing #stageBrainstorm=done on
    workstream <slug>: run /factory:brainstorm first.` and stop. `<planRev>` = its `#planRev`.
 3. `factory-event stage --stage uiux --status started --workstream <slug> </dev/null`.
+4. `#stageUiux` is `done` or `skipped` → Direct-command behaviour below before step 1.
 
 ## Procedure
 
@@ -35,7 +37,8 @@ the `--workstream` value, else `factory.activeWorkstream`; `<ws>` = its note id;
    (<one-line evidence>). Run the UI/UX stage?" options `Yes` / `Skip` (the one matching your reading first).
    - Skip → `mcp__trilium__set_attribute(<ws>, stageUiux=skipped)`; Log `stage skipped — user chose Skip
      (<evidence>)`; `factory-event stage --stage uiux --status done --workstream <slug> </dev/null`; print one line;
-     the stage ends here (no `UI-UX Spec`).
+     the stage ends here (no `UI-UX Spec`). On a re-run with `#stageUiux=done`, Skip leaves `done` and the existing
+     `UI-UX Spec` unchanged: Log `re-run skipped, earlier UI-UX Spec kept` and send the same event instead.
 2. **Existing UI** (`mcp__trilium__get_attributes(<projectNoteId>)` shows `#projectKind=brownfield`; else inventory
    `n/a (greenfield)`). Graph first (SOP 5): Read `<repoPath>/graphify-out/GRAPH_REPORT.md`, then
    `cd "<repoPath>" && graphify query "Which UI framework, component library, styling approach, routes and screens does
@@ -93,6 +96,13 @@ the `--workstream` value, else `factory.activeWorkstream`; `<ws>` = its note id;
 
 ## Direct-command behaviour
 
-`/factory:uiux` or `/factory:run uiux [--workstream <slug>]`: runs again even when `#stageUiux` is `done` or
-`skipped`; it overwrites `UI-UX Spec` and may rewrite the mockups. When `#stagePlan=done` on `<ws>`, end by telling
-the user to run `/factory:plan` so the tasks are realigned with the new UI-UX Spec. After Completion, stop.
+`/factory:uiux` or `/factory:run uiux [--workstream <slug>]` when `#stageUiux` is `done` or `skipped`:
+AskUserQuestion "uiux is already <done|skipped> for <slug>. Run it again?" options
+`Re-run (overwrite UI-UX Spec and mockups)` / `Stop`.
+- `Stop` → no writes; `factory-event stage --stage uiux --status stopped --workstream <slug> </dev/null`; stop.
+- `Re-run` → steps 1–6 and Completion. `#stageUiux` keeps its value until Completion; `Skip` in step 1 never turns an
+  earlier `done` into `skipped`. When `#stagePlan=done` on `<ws>`, end by telling the user to run `/factory:plan` so
+  the tasks are realigned with the new UI-UX Spec.
+
+Entered with no verb (`/factory:run`), the stage runs only while `#stageUiux` is unset and continues with api-design
+after Completion; entered as a direct command, stop after Completion.

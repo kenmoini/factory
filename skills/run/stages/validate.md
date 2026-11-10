@@ -3,7 +3,8 @@
 Attacks the workstream's task plan with six `plan-adversary` agents, one per lens, dispatched in ONE message, and
 records the result as `Validation/Round <N>`. The plan passes only if no lens fails, or the user explicitly accepts
 the risks. Notation: `<projectNoteId>` = `factory.projectNoteId`; `<Factory Log>` = its child titled `Factory Log`;
-`<slug>` = the `--workstream` value, else `factory.activeWorkstream`; `<ws>` = its note id; `<docs>` =
+`<slug>` = the `--workstream` value, else live `factory-config get activeWorkstream --repo "<repoPath>"` (never the
+preflight snapshot); `<ws>` = its note id; `<docs>` =
 `<repoPath>/.factory/workstreams/<slug>/docs`; `<vdir>` = `<repoPath>/.factory/workstreams/<slug>/validation`;
 `<ISO ts>` = `date -u +%Y-%m-%dT%H:%M:%SZ`. Writes follow `$PLUGIN_ROOT/skills/run/references/trilium-schema.md`;
 dispatch and parsing follow `$PLUGIN_ROOT/skills/run/references/agent-protocol.md`.
@@ -26,6 +27,7 @@ Lenses, exactly: `feasibility`, `missing-requirements`, `security`, `ux`, `seque
 2. `mcp__trilium__get_attributes(<ws>)` shows `#stagePlan=done`. Else refuse `Missing #stagePlan=done on workstream
    <slug>: run /factory:plan first.` and stop. `<planRev>` = its `#planRev`.
 3. `factory-event stage --stage validate --status started --workstream <slug> </dev/null`.
+4. `#stageValidate=pass` and `#validatedPlanRev` equals `<planRev>` → Direct-command behaviour below before step 1.
 
 ## Procedure
 
@@ -36,13 +38,14 @@ Lenses, exactly: `feasibility`, `missing-requirements`, `security`, `ux`, `seque
    Write `<repoPath>/.factory/workstreams/<slug>/tasks.md` by the **Export tasks** rule of
    `$PLUGIN_ROOT/skills/run/stages/plan.md`. Graph: `<graph>` = `<repoPath>/graphify-out/GRAPH_REPORT.md` if it
    exists (SOP 5 stale check first), else `none`. `mkdir -p "<vdir>"`.
-2. **Round.** `mcp__trilium__search_notes("#factoryValidation #workstream='<slug>' #project='<repoName>' orderBy #round desc limit 1")`
-   (sort client-side if needed) → `mcp__trilium__get_attributes` → `<N>` = its `#round` + 1; no hit → `<N>` = 1.
+2. **Round.** `mcp__trilium__search_notes("#factoryValidation #workstream='<slug>' #project='<repoName>'")` (all
+   rounds, no `orderBy`/`limit`: `#round` may sort as text) → `mcp__trilium__get_attributes` of each → `<N>` = the
+   numeric maximum of `#round` + 1; no hit → `<N>` = 1.
 3. **Dispatch.** Find or create `Agent Runs` under `<projectNoteId>` (content `# Agent Runs`, label
    `#project=<repoName>`). Per lens, before the call, `mcp__trilium__create_note` there: title
-   `<ISO ts> plan-adversary pending`, content `Dispatched <ISO ts>. Brief: lens=<lens>, round <N>`, labels
+   `<ISO ts> plan-adversary <lens> pending`, content `Dispatched <ISO ts>. Brief: lens=<lens>, round <N>`, labels
    `#factoryAgentRun`, `#agentType=plan-adversary`, `#status=running`, `#startedAt=<ISO ts>`, `#project=<repoName>`,
-   `#workstream=<slug>`; keep each note id (the six pending titles may coincide; they differ once renamed).
+   `#workstream=<slug>`; keep each note id.
    Then ONE assistant message with six Agent calls, `subagent_type: "factory:plan-adversary"`, foreground,
    `description: "plan-adversary validate R<N> [task:none]"`, prompt (paths absolute, one per lens):
 
@@ -60,7 +63,7 @@ Lenses, exactly: `feasibility`, `missing-requirements`, `security`, `ux`, `seque
    `PASS` or `FAIL`; each finding has `id`, `severity` (`critical` | `important` | `minor`), `task`, `summary`, `fix`.
    Recompute `verdict` = `FAIL` iff a `critical` or `important` finding exists (note a change in the lens note).
    Write the JSON to `<vdir>/R<N>-rev<planRev>-<lens>.json`. Run note: `mcp__trilium__rename_note` to
-   `<ISO ts> plan-adversary <agentId>`; set `#agentId=<agentId>`, `#status=done` (parsed) or `failed`,
+   `<ISO ts> plan-adversary <lens> <agentId>`; set `#agentId=<agentId>`, `#status=done` (parsed) or `failed`,
    `#endedAt=<ISO ts>`; `mcp__trilium__append_to_note` the summary lines and the json block. A failed lens (no valid
    block, or an Agent error) → dispatch it once more alone (new run note); failing again → tell the user its message;
    Stop validate (`plan-adversary <lens> failed`).
@@ -100,6 +103,14 @@ Lenses, exactly: `feasibility`, `missing-requirements`, `security`, `ux`, `seque
 
 ## Direct-command behaviour
 
-`/factory:validate` or `/factory:run validate [--workstream <slug>]`: always runs a new round, even when
-`#stageValidate=pass` and `#validatedPlanRev` equals `#planRev`. After Completion (or Stop), stop; `Fix the plan now`
-still runs plan and then this stage, since the user chose it.
+`/factory:validate` or `/factory:run validate [--workstream <slug>]` when `#stageValidate=pass` and
+`#validatedPlanRev` equals `#planRev`: AskUserQuestion "Plan rev <planRev> of <slug> already passed validation. Run a
+new round (six agents)?" options `Re-run (new round)` / `Stop`.
+- `Stop` → no writes, no agents; `factory-event stage --stage validate --status stopped --workstream <slug>
+  </dev/null`; stop.
+- `Re-run` → steps 1–6 and Completion as round `<N>`.
+
+Any other state (no round yet, `#stageValidate=fail`, or a bumped `#planRev`) runs without the question. Entered with
+no verb (`/factory:run`), the stage runs only while it is not done and continues with execute; entered as a direct
+command, stop after Completion (or Stop). `Fix the plan now` still runs plan and then this stage, since the user chose
+it.

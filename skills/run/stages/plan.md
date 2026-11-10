@@ -3,8 +3,9 @@
 Turns the workstream's approved documents into `Milestones/M<n> <title>/T-NNN <title>` notes that the execute loop
 runs, or realigns existing ones with what has been built and bumps `#planRev`. Notation: `<projectNoteId>` =
 `factory.projectNoteId`; `<Factory Log>` = its child titled `Factory Log`; `<slug>` = the `--workstream` value, else
-`factory.activeWorkstream`; `<ws>` = its note id; `<docs>` = `<repoPath>/.factory/workstreams/<slug>/docs`; `<wt>` =
-`<repoPath>/.factory/worktrees/<slug>`; `<ISO ts>` = `date -u +%Y-%m-%dT%H:%M:%SZ`. Every write follows
+live `factory-config get activeWorkstream --repo "<repoPath>"` (never the preflight snapshot); `<ws>` = its note id;
+`<docs>` = `<repoPath>/.factory/workstreams/<slug>/docs`; `<wt>` = `<repoPath>/.factory/worktrees/<slug>`;
+`<ISO ts>` = `date -u +%Y-%m-%dT%H:%M:%SZ`. Every write follows
 `$PLUGIN_ROOT/skills/run/references/trilium-schema.md`; task notes must satisfy the Preconditions and SELECT of
 `$PLUGIN_ROOT/skills/run/references/execute-loop.md`.
 
@@ -15,12 +16,12 @@ runs, or realigns existing ones with what has been built and bumps `#planRev`. N
 - **Export tasks** (also used by the validate stage): `mcp__trilium__search_notes` for
   `#factoryMilestone #workstream='<slug>' #project='<repoName>'` and `#factoryTask #workstream='<slug>' #project='<repoName>'`;
   `mcp__trilium__get_attributes` of each hit; sort numerically by `#order`. Write
-  `<repoPath>/.factory/workstreams/<slug>/tasks.md`: `# Tasks — <slug> (plan rev <rev>)` (`<rev>` = current `#planRev`
-  of `<ws>`); `## Milestones`
-  (one line per milestone: `- M<n> <title> (<status>)`); `## Tasks`, a table
+  `<repoPath>/.factory/workstreams/<slug>/tasks.md`: `# Tasks — <slug> (plan rev <rev>)` (`<rev>` = current
+  `#planRev` of `<ws>`); `## Milestones` (one line per milestone: `- M<n> <title> (<status>)`); `## Tasks`, a table
   `| id | milestone | title | dependsOn | status |` (one row per task, `–` for no deps); `## Task details`, per task
   `### T-NNN <title>` + its note body (`mcp__trilium__get_note_content`), which carries the acceptance criteria and
-  files the adversaries check.
+  files the adversaries check. In those copies replace the literal `{{interfaces}}` and `{{steps}}` with
+  `(filled by the spec-writer at execute)` so they do not read as gaps.
 - **Log**: `mcp__trilium__append_to_note(<Factory Log>, "- <ISO ts> [plan] <event>")`.
 - **Stop plan** (a `Stop` answer): Log `stage stopped — <reason>`;
   `factory-event stage --stage plan --status stopped --workstream <slug> </dev/null`; leave `#stagePlan` unchanged.
@@ -35,6 +36,8 @@ runs, or realigns existing ones with what has been built and bumps `#planRev`. N
    `skipped`. Else refuse with the first missing one, e.g. `Missing #stageUiux=done|skipped on workstream <slug>: run
    /factory:uiux first.`, and stop. `<planRev>` = its `#planRev`.
 3. `factory-event stage --stage plan --status started --workstream <slug> </dev/null`.
+4. `#stagePlan=done`, not entered from the validate stage's `Fix the plan now` → Direct-command behaviour below
+   before step 1.
 
 ## Procedure
 
@@ -46,9 +49,10 @@ runs, or realigns existing ones with what has been built and bumps `#planRev`. N
 2. **Fresh plan.** Derive, then write:
    - Milestones: 2–6, each a working increment in execution order: `M1`, `M2`, … with `#order` 1, 2, ….
    - Tasks: one reviewable change with its own tests (fold setup, config and docs into the task that needs them);
-     at most 12 per milestone (3 or more where the work allows), ideally ≤ 20 in total. Every Spec requirement, every
-     UI-UX flow and state and every API operation maps to at least one task. Sources: Spec, Plan, UI-UX Spec, API
-     Design; Standards decide tools and test approach.
+     at most 12 per milestone (3 or more where the work allows), ideally ≤ 20 in total (needs more → say so and
+     suggest splitting it into workstreams). Every Spec requirement, every UI-UX flow and state and every API
+     operation maps to at least one task. Sources: Spec, Plan, UI-UX Spec, API Design; Standards decide tools and
+     test approach.
    - Ids `T-001`, `T-002`, … numbered globally in dependency order (a task depends only on lower ids; no cycles; no
      task in an earlier milestone than a task it depends on); task `#order` = its number. Ids are never renumbered or
      reused once written: later additions take the next free id and `#order` carries the execution order.
@@ -97,11 +101,15 @@ runs, or realigns existing ones with what has been built and bumps `#planRev`. N
      change list (new and changed task bodies carry `{{plan_rev}}` = `<newRev>`);
      `mcp__trilium__set_attribute(<ws>, planRev=<newRev>)` and `mcp__trilium__set_attribute(<planNoteId>,
      planRev=<newRev>)`; `mcp__trilium__append_to_note(<planNoteId>, "## Realign rev <newRev> (<ISO ts>)" + the
-     change list)`; Export `plan`; Export tasks. `Keep the plan as is` → nothing written, no bump.
+     change list)`; Export `plan`; Export tasks. Any `todo` task added or changed and `#stageExecute` set on `<ws>` →
+     `mcp__trilium__delete_attribute(<ws>, stageExecute)` (execute has work again). `Keep the plan as is` → nothing
+     written, no bump.
 
 ## Completion
 
-1. `mcp__trilium__set_attribute(<ws>, stagePlan=done)`; `mcp__trilium__set_attribute(<ws>, wsStatus=planned)`.
+1. `mcp__trilium__set_attribute(<ws>, stagePlan=done)`. Fresh plan or applied realign →
+   `mcp__trilium__set_attribute(<ws>, wsStatus=planned)`; `Keep the plan as is` → `#wsStatus` unchanged (e.g. a
+   `paused` set by execute stays).
 2. Log `stage done — <slug>: <m> milestones, <n> tasks, plan rev <#planRev>` (realign: add
    `realigned +<added> ~<changed> -<deleted>`).
 3. `factory-event stage --stage plan --status done --workstream <slug> </dev/null`.
@@ -110,6 +118,11 @@ runs, or realigns existing ones with what has been built and bumps `#planRev`. N
 
 ## Direct-command behaviour
 
-`/factory:plan` or `/factory:run plan [--workstream <slug>]`: runs even when `#stagePlan=done`; the mode follows
-step 1 (milestones exist → Realign). Entered from the validate stage's `Fix the plan now` → Realign with that round's
-findings, then return to validate. Otherwise, after Completion, stop.
+`/factory:plan` or `/factory:run plan [--workstream <slug>]` when `#stagePlan=done`: AskUserQuestion "plan is
+already done for <slug> (plan rev <planRev>). Realign it?" options `Re-run (realign the tasks)` / `Stop`.
+- `Stop` → no writes; `factory-event stage --stage plan --status stopped --workstream <slug> </dev/null`; stop.
+- `Re-run` → steps 1–4 and Completion (milestones exist → Realign).
+
+Entered from the validate stage's `Fix the plan now` → no question: Realign with that round's findings, then return
+to validate. Entered with no verb (`/factory:run`), the stage runs only while `#stagePlan` is unset and continues
+with validate; entered as a direct command, stop after Completion.

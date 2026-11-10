@@ -3,7 +3,8 @@
 Decides with the user whether the workstream adds or changes API contracts; if so, agrees the contract, writes the
 repo API document in the workstream worktree (committed on branch `<slug>`, never on `main`), and ends with an
 approved `API Design` note. Notation: `<projectNoteId>` = `factory.projectNoteId`; `<Factory Log>` = its child titled
-`Factory Log`; `<slug>` = the `--workstream` value, else `factory.activeWorkstream`; `<ws>` = its note id; `<docs>` =
+`Factory Log`; `<slug>` = the `--workstream` value, else live `factory-config get activeWorkstream --repo
+"<repoPath>"` (never the preflight snapshot: brainstorm may have changed it); `<ws>` = its note id; `<docs>` =
 `<repoPath>/.factory/workstreams/<slug>/docs`; `<wt>` = `<repoPath>/.factory/worktrees/<slug>`; `<ISO ts>` =
 `date -u +%Y-%m-%dT%H:%M:%SZ`. Every write follows `$PLUGIN_ROOT/skills/run/references/trilium-schema.md`.
 
@@ -25,6 +26,7 @@ approved `API Design` note. Notation: `<projectNoteId>` = `factory.projectNoteId
 2. `mcp__trilium__get_attributes(<ws>)` shows `#stageBrainstorm=done`. Else refuse `Missing #stageBrainstorm=done on
    workstream <slug>: run /factory:brainstorm first.` and stop. `<planRev>` = its `#planRev`.
 3. `factory-event stage --stage api-design --status started --workstream <slug> </dev/null`.
+4. `#stageApi` is `done` or `skipped` → Direct-command behaviour below before step 1.
 
 ## Procedure
 
@@ -34,7 +36,8 @@ approved `API Design` note. Notation: `<projectNoteId>` = `factory.projectNoteId
    API contracts (<one-line evidence>). Run the API design stage?" options `Yes` / `Skip` (matching option first).
    - Skip → `mcp__trilium__set_attribute(<ws>, stageApi=skipped)`; Log `stage skipped — user chose Skip
      (<evidence>)`; `factory-event stage --stage api-design --status done --workstream <slug> </dev/null`; the stage
-     ends here.
+     ends here. On a re-run with `#stageApi=done`, Skip leaves `done`, `API Design` and the repo document unchanged:
+     Log `re-run skipped, earlier API Design kept` and send the same event instead.
 2. **Existing API** (brownfield, `#projectKind=brownfield` on `<projectNoteId>`). Graph first (SOP 5):
    `cd "<repoPath>" && graphify query "Which API endpoints, routes, schemas and API documents exist?"`; summarise in
    ≤ 100 words for `{{changes}}`. Greenfield → `n/a (new API)`.
@@ -88,7 +91,14 @@ approved `API Design` note. Notation: `<projectNoteId>` = `factory.projectNoteId
 
 ## Direct-command behaviour
 
-`/factory:api-design` or `/factory:run api-design [--workstream <slug>]`: runs again even when `#stageApi` is `done`
-or `skipped`; it updates the same repo document (a new `docs(api): <slug>` commit, never an amend) and overwrites
-`API Design`. When `#stagePlan=done` on `<ws>`, end by telling the user to run `/factory:plan` so the tasks are
-realigned. After Completion, stop.
+`/factory:api-design` or `/factory:run api-design [--workstream <slug>]` when `#stageApi` is `done` or `skipped`:
+AskUserQuestion "api-design is already <done|skipped> for <slug>. Run it again?" options
+`Re-run (update the API document and API Design)` / `Stop`.
+- `Stop` → no writes; `factory-event stage --stage api-design --status stopped --workstream <slug> </dev/null`; stop.
+- `Re-run` → steps 1–7 and Completion: the same repo document is updated (a new `docs(api): <slug>` commit, never an
+  amend) and `API Design` overwritten. `#stageApi` keeps its value until Completion; `Skip` in step 1 never turns an
+  earlier `done` into `skipped`. When `#stagePlan=done` on `<ws>`, end by telling the user to run `/factory:plan` so
+  the tasks are realigned.
+
+Entered with no verb (`/factory:run`), the stage runs only while `#stageApi` is unset and continues with plan after
+Completion; entered as a direct command, stop after Completion.

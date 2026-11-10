@@ -14,10 +14,10 @@ titled `Factory Log` (`mcp__trilium__get_child_notes(<projectNoteId>)`); `<ws>` 
   Markdown content). Then one `mcp__trilium__set_attribute` per label named (markers empty).
 - **Export `<kind>`**: `mkdir -p "<docs>"`; `mcp__trilium__get_note_content(<noteId>)` → Write `<docs>/<kind>.md`.
 - **Log**: `mcp__trilium__append_to_note(<Factory Log>, "- <ISO ts> [brainstorm] <event>")`.
-- **Stop brainstorm** (a `Stop` answer or a stop below): Log `stage stopped — <reason>`;
-  `factory-event stage --stage brainstorm --status stopped --workstream <slug> </dev/null` (no `--workstream` before
-  a slug is fixed); leave `#stageBrainstorm` unset; end the run. Notes and worktree already made stay; a later run with
-  the same slug resumes them.
+- **Stop brainstorm** (a `Stop` answer or a stop below): the Stray check (Completion step 1) once a slug is fixed;
+  Log `stage stopped — <reason>`; `factory-event stage --stage brainstorm --status stopped --workstream <slug>
+  </dev/null` (no `--workstream` before a slug is fixed); leave `#stageBrainstorm` unset; end the run. Notes and
+  worktree already made stay; a later run with the same slug resumes them.
 
 ## Prerequisites
 
@@ -46,8 +46,7 @@ titled `Factory Log` (`mcp__trilium__get_child_notes(<projectNoteId>)`); `<ws>` 
        only Cache and activate; then steps 4–7 (the Overview stays).
      - `#stageBrainstorm=done`, any other `#wsStatus` → say "`<slug>` is <wsStatus>; change its tasks with
        /factory:plan"; AskUserQuestion `Choose another slug / Stop`.
-   - Worktree: `factory-worktree ensure <slug> --repo "<repoPath>"` → `{path, branch, created, branchCreated}`
-     (branch `<slug>` from the default branch, at `<repoPath>/.factory/worktrees/<slug>`).
+   - Worktree: `factory-worktree ensure <slug> --repo "<repoPath>"` → `{path, branch, created, branchCreated}`.
      - Exit 2 (branch `<slug>` exists, not made by the factory) → AskUserQuestion
        `Adopt existing branch <slug> / Choose another slug / Stop`; Adopt → rerun with `--adopt`.
      - Exit 3 → show its `error`; back to the slug question. Exit 1 → show `error`; Stop brainstorm.
@@ -78,33 +77,34 @@ titled `Factory Log` (`mcp__trilium__get_child_notes(<projectNoteId>)`); `<ws>` 
    re-run `/factory:examine` or `/factory:set-standards` (they write the export); Stop brainstorm. Export `overview`
    from the `Overview` note.
 5. **Design (`superpowers:brainstorming`).** Resume (not Redo) with a `Spec` note → step 7. Invoke the Skill tool,
-   skill `superpowers:brainstorming`, args exactly this (`<overview text>`: step 2's answer, else the "In the user's
-   words" section of `<docs>/overview.md`):
+   skill `superpowers:brainstorming`, args exactly this (`<docs>` written out as its absolute path; `<overview text>`:
+   step 2's answer, else the "In the user's words" section of `<docs>/overview.md`):
 
    ```
-   Preference: do NOT write docs/superpowers/specs or docs/superpowers/plans files. When the design is approved, give me the full design document back in a single message; I store it in Trilium. Context documents to read first: .factory/workstreams/<slug>/docs/goal.md, standards.md (and examination.md if present), and the workstream overview below. Overview: <overview text>
+   Preference: do NOT write docs/superpowers/specs or docs/superpowers/plans files. When the design is approved, give me the full design document back in a single message; I store it in Trilium. Draft location for the builder check: <docs>/spec-draft.md; never write under docs/. Do not offer the visual companion or spikes in this session; the factory's UI/UX stage produces mockups later. Context documents to read first: <docs>/goal.md, <docs>/standards.md (and <docs>/examination.md if present), and the workstream overview below. Overview: <overview text>
    ```
 
    Follow the skill's conversation in this context, with these rules:
    - Each question it puts to the user is an AskUserQuestion: the question as the skill words it, options
      `I'm done answering: write the design` / `Stop`; the user answers via Other. `I'm done answering` still ends
      in a written design (the factory needs a Spec, whatever size the skill gives the work).
-   - It writes no `docs/superpowers/` file and commits nothing. If such a file appears anyway, take its content as
-     the design, delete the file, and tell the user.
-   - Its builder-check subagent is allowed (description ending `[task:none]`; no Agent Run note: not a factory agent).
-   - Its HARD-GATE approval is yours to ask when the full design document comes back: show where it is in the chat,
+   - It writes nothing outside `<repoPath>/.factory/` (no `docs/`, no `.superpowers/`, no spike code) and commits
+     nothing; anything that appears anyway is moved aside by the Stray check.
+   - Its builder-check subagent reads `<docs>/spec-draft.md` and is allowed (description ending `[task:none]`; no
+     Agent Run note: not a factory agent).
+   - Its HARD-GATE approval is yours to ask when the full design document comes back:
      AskUserQuestion `Approve design / Request changes / Stop`. Request changes → the user's changes (via Other) go
      back into the conversation; ask again on the revised document. Approve → step 6 before anything else.
    - The skill's next step, `superpowers:writing-plans`, is step 7. Invoke no other skill (no execution, worktree or
      review skill): the factory's own stages build the plan.
 6. **Spec.** Write `Spec` under `<ws>`: content = the approved design document, verbatim Markdown (no template);
-   labels `#factoryDoc=spec`, `#approval=approved`, `#project=<repoName>`, `#workstream=<slug>`. Export `spec`.
-   Log `<slug> spec approved`.
+   labels `#factoryDoc=spec`, `#approval=approved`, `#project=<repoName>`, `#workstream=<slug>`. Export `spec`;
+   `rm -f "<docs>/spec-draft.md"` (agents read every file in `<docs>/`). Log `<slug> spec approved`.
 7. **Plan (`superpowers:writing-plans`).** Resume (not Redo) with a `Plan` note → Completion. Invoke the Skill tool, skill
-   `superpowers:writing-plans`, args exactly this (fill `<slug>`):
+   `superpowers:writing-plans`, args exactly this (`<docs>` written out as its absolute path):
 
    ```
-   Preference: do NOT write docs/superpowers/specs or docs/superpowers/plans files. When the plan is approved, give me the full plan back in a single message; I store it in Trilium. Execution method already chosen: the factory's execute stage runs this plan, so do not invoke an execution skill. Context documents to read first: .factory/workstreams/<slug>/docs/goal.md, standards.md (and examination.md if present). Spec: .factory/workstreams/<slug>/docs/spec.md
+   Preference: do NOT write docs/superpowers/specs or docs/superpowers/plans files; never write under docs/. When the plan is approved, give me the full plan back in a single message; I store it in Trilium. Execution method already chosen: the factory's execute stage runs this plan, so do not invoke an execution skill. Context documents to read first: <docs>/goal.md, <docs>/standards.md (and <docs>/examination.md if present). Spec: <docs>/spec.md
    ```
 
    - Same rules as step 5 (questions via AskUserQuestion, no `docs/superpowers/` file, no other skill). Its plan
@@ -117,16 +117,20 @@ titled `Factory Log` (`mcp__trilium__get_child_notes(<projectNoteId>)`); `<ws>` 
 
 ## Completion
 
-1. `mcp__trilium__set_attribute(<ws>, stageBrainstorm=done)`; `mcp__trilium__set_attribute(<ws>, wsStatus=design)`.
-2. Log `stage done — <slug>: Spec and Plan rev <rev> approved, worktree <path>` (Redo: add `, redo`).
-3. `factory-event stage --stage brainstorm --status done --workstream <slug> </dev/null`.
-4. Print one paragraph: slug, branch and worktree path, `<ws>`, the export paths in `<docs>/`; next stage: uiux.
+1. **Stray check** (also before Stop brainstorm): `<stray>` = `<repoPath>/.factory/workstreams/<slug>/stray`. Untracked
+   files the skills left in the main checkout move there:
+   `cd "<repoPath>" && git status --porcelain --untracked-files=all -- .superpowers docs/superpowers | sed -n 's/^?? //p' | while read -r f; do mkdir -p "<stray>/$(dirname "$f")" && mv "$f" "<stray>/$f"; done`.
+   Anything moved, or tracked changes under those paths → warn the user with the list (tracked changes stay for
+   them to revert); `main` must be clean before execute.
+2. `mcp__trilium__set_attribute(<ws>, stageBrainstorm=done)`; `mcp__trilium__set_attribute(<ws>, wsStatus=design)`.
+3. Log `stage done — <slug>: Spec and Plan rev <rev> approved, worktree <path>` (Redo: add `, redo`).
+4. `factory-event stage --stage brainstorm --status done --workstream <slug> </dev/null`.
+5. `factory-preflight` again, so later stages of this run see `<slug>` as `factory.activeWorkstream`.
+6. Print one paragraph: slug, branch and worktree path, `<ws>`, the export paths in `<docs>/`; next stage: uiux.
 
 ## Direct-command behaviour
 
-`/factory:brainstorm [<slug>]` or `/factory:run brainstorm [<slug>]`:
-- A positional slug wins over `--workstream` (SKILL.md prints the warning). No slug → step 1 asks.
-- Runs even when other workstreams exist or are active: it makes `<slug>` the active workstream (step 3).
-- An existing slug resumes or, after an explicit `Redo` answer, redoes the design (step 1); it never makes a second
-  `<slug>` note under `Workstreams`.
-- After Completion, stop.
+`/factory:brainstorm [<slug>]` or `/factory:run brainstorm [<slug>]`: a positional slug wins over `--workstream`
+(SKILL.md warns); none → step 1 asks. It makes `<slug>` the active workstream, even when others exist. An existing
+slug resumes or, after an explicit `Redo`, redoes the design (step 1); never a second `<slug>` note under
+`Workstreams`. After Completion, stop.
