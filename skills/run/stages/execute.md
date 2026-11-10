@@ -5,10 +5,10 @@ notation applies; `<taskDir>` = `<repoPath>/.factory/tasks/<slug>/<T>`; paths ar
 `#project='<repoName>'`.
 
 - **Dispatch**: Agent `subagent_type: "factory:<agent>"`, `description` and five-line `prompt` as shown, foreground,
-  no `model` override; empty command → `lint=none`. **Parse**: LAST fenced json block (agent-protocol § Parsing
-  rule); none parses, or a tool error → BLOCKED.
-- **run-start / run-end** (execute-loop § Notation) wrap every Agent call and `SendMessage`; run-end's
-  `factory-event agent --task <T> --status done --workstream <slug>` uses `--status failed` for a failed run.
+  no `model` override; an empty Standards command → `<name>=none`. **Parse**: LAST fenced json block (agent-protocol
+  § Parsing rule); none parses, or a tool error → BLOCKED.
+- **run-start / run-end**: as execute-loop § Notation, around every Agent call and `SendMessage`; run-end's agent
+  event uses `--status failed` for a failed run (stdin always the piped JSON payload or `</dev/null`).
 - **Answer** (`NEEDS_CONTEXT`): from `<docs>/`, else AskUserQuestion → `SendMessage(to: <agentId>, "[task:<tn>]
   Answers: 1. … Return the same contract.")` → parse again.
 - status(S) (writes the ledger `phase`; prints `<T> <title>: <PHASE> (round <n>)`), head, log, doc: execute-loop
@@ -16,15 +16,9 @@ notation applies; `<taskDir>` = `<repoPath>/.factory/tasks/<slug>/<T>`; paths ar
 
 ## Prerequisites
 
-execute-loop § Preconditions, same numbering (approve/reject: step 0 only):
+Follow execute-loop.md § Preconditions steps 0–4: step 0 resolves `<slug>`/`<ws>` (`factory-config get|set`); step 2
+runs `factory-worktree ensure` and re-sets `#worktree` if `path` differs from it. Approve/reject run step 0 only.
 
-0. `<slug>` = `--workstream`, else `factory-config get activeWorkstream --repo <repoPath>`; `<ws>` = `factory-config
-   get workstreams.<slug>.noteId --repo <repoPath>` (miss: schema search, then `factory-config set` it).
-1. `get_attributes(<ws>)`: `#stageValidate=pass` and `#validatedPlanRev` = `#planRev`, else stop: "run validate".
-2. `factory-worktree ensure <slug> --repo <repoPath>`: exit 2 → AskUserQuestion `Adopt branch <slug> / Stop` (adopt:
-   add `--adopt`); 3 or 1 → report `error`, stop. New `path` → `set_attribute(<ws>, worktree=<path>)`.
-3. `<repoPath>` on a clean `main`, else stop and tell the user.
-4. `get_attributes(<Standards>)` → `#lintCmd`, `#testCmd`, `#buildCmd`.
 5. `get_note_content` + Write: `goal`, `standards` → `<repoPath>/.factory/docs/<kind>.md`, then copy into `<docs>/`;
    `spec`, `plan`, `uiux`, `api-design` → `<docs>/<kind>.md`. Skip absent ones.
 6. Stage `started` event already sent by SKILL.md: do not repeat it. Read the Ledger → SELECT.
@@ -46,9 +40,9 @@ Follow execute-loop.md § SELECT.
 3. Step 1 found another task → its resume table row (even if the plan changed).
 4. Before a NEW pick (approve/reject skip the prerequisite table): `#validatedPlanRev` ≠ `#planRev` → stop with "Plan
    changed since validation: run /factory:validate".
-5. Pick per execute-loop SELECT steps 4–5. `set_attribute(<ws>, wsStatus=executing)`; milestone at `#status=todo` →
-   `set_attribute(<milestone>, status=active)`; `mkdir -p <taskDir>`; ledger `task:{id,noteId}, phase:"SPEC"`, rest
-   empty/0; log `selected`.
+5. Pick per execute-loop SELECT steps 4–5. `set_attribute(<ws>, wsStatus=executing)`; milestone (its step 6 search)
+   at `#status=todo` → `set_attribute(<milestone>, status=active)`; `mkdir -p <taskDir>`; ledger
+   `task:{id,noteId}, phase:"SPEC"`, rest empty/0; log `selected`.
 
 Next: `needs-human` → NEEDS-HUMAN; in-flight → resume table; ready → SPEC; all done → FINISH; else stop.
 Print: `<T> <title>: SELECT (round 0)`.
@@ -96,12 +90,14 @@ NEEDS-HUMAN(`builder-blocked`). Print: `<T> <title>: BUILD (round 0)`.
 
 Follow execute-loop.md § REVIEW.
 1. `prevHead` = `""` from BUILD, `#head` from FIX; `n = #round + 1`; head → `set_attribute(<tn>, round=<n>,
-   head=<sha>)`; status(reviewing); ledger `round`, `head`, `prevHead`. Resume (`reviewing`): its step 1 branch.
+   head=<sha>)`; status(reviewing); ledger `round`, `head`, `prevHead`. Resume (`reviewing`): `n = #round`, keep
+   `#head`/`prevHead`, skip these writes.
 2. `factory-review-package <wt> <from> <#head> --out <taskDir>/review-R<n>.diff`, `<from>` = non-empty `prevHead`
    else `#base` (resume reuses an existing diff); non-zero exit → report `error`, stop.
 3. `<open>` = `<taskDir>/open-findings-R<n-1>-human.json`, else `…-R<n-1>.json`, if present; none → drop
    `, open=<open>`. run-start per reviewer (title `<ts> <agent> <reviewer> pending`, renamed `<ts> <agent> <reviewer>
-   <agentId>`). Send the four Agent calls in a single assistant message; run them in the foreground
+   <agentId>`). Send the four Agent calls in a single assistant message (resume: dispatch only reviewers without
+   `review-R<n>-<reviewer>.json`; read the others' JSON from disk); run them in the foreground
    (`run_in_background: false`); do not proceed until all four results are in. Description
    `<agent> <T> R<n> [task:<tn>]`:
    ```
@@ -112,12 +108,14 @@ Follow execute-loop.md § REVIEW.
    Return: ≤15 lines then exactly one fenced json block matching your contract
    ```
    `<Lens>`, `<extra>`: `security-reviewer` Security, none; `ux-reviewer` UX, `, uiux=<docs>/uiux.md` (UI-UX
-   Spec export; `none` if absent); `ui-design-reviewer` UI design, same +
-   `, mockups=<repoPath>/.factory/mockups/<slug>/`; `code-reviewer` Code, `, standards=<docs>/standards.md, plan=<docs>/plan.md`.
+   Spec export; `none` if absent); `ui-design-reviewer` UI design, same + `, mockups=<repoPath>/.factory/mockups/<slug>/`
+   (`none` if absent); `code-reviewer` Code, `, standards=<docs>/standards.md, plan=<docs>/plan.md`.
 4. Per result: parse (LAST json; none → BLOCKED); recompute `verdict`; write `<taskDir>/review-R<n>-<reviewer>.json`;
    doc(`Review R<n> <reviewer>`, review, `#factoryReview`, `#round=<n>`, `#reviewer=<reviewer>`, `#verdict`);
-   run-end. If a reviewer errors, respawn it once (alone), then NEEDS-HUMAN(`reviewer-failed`).
-5. log `R<n> security=… ux=… ui-design=… code=…`; `h` = `Human Decision` `#round` if its `#verdict=reject`, else 0.
+   run-end. If a reviewer errors or returns no parseable JSON block (BLOCKED), respawn it once (alone), then
+   NEEDS-HUMAN(`reviewer-failed`).
+5. From the four `review-R<n>-<reviewer>.json` on disk: log `R<n> security=… ux=… ui-design=… code=…`; `h` =
+   `Human Decision` `#round` if its `#verdict=reject`, else 0.
 
 Next: all four PASS → APPROVE; any CHANGES and `n − h ≤ 2` → FIX; any CHANGES and `n − h ≥ 3` →
 NEEDS-HUMAN(`fix-cap`); a reviewer fails twice → NEEDS-HUMAN(`reviewer-failed`).
@@ -180,7 +178,7 @@ Follow execute-loop.md § MERGE. Resume (`merging`): step 2.
 | resume `blocked` (s8): review CHANGES, no r2 | s7 (no SendMessage if head ≠ a non-empty `prevHead`) |
 | resume: no review; head = a non-empty `prevHead` / else | s2 / s4 |
 
-Conflict sub-flow (`#status=blocked`) = execute-loop § MERGE step 3 as written, `s<k>` = its step k: its messages and
+Conflict sub-flow (`#status=blocked`) = execute-loop § MERGE step 3 as written, `s<i>` = its step i: its messages and
 code-reviewer brief are the dispatches; ledger `prevHead=<#head>` at s1 and s7; `factory-merge` only from s6.
 
 Print: `<T> <title>: MERGE (round <n>)`.
@@ -199,7 +197,7 @@ Next: SELECT (unless MERGE stopped). Print: `<T> <title>: DONE (round <n>)`.
 ## NEEDS-HUMAN
 
 Follow execute-loop.md § NEEDS-HUMAN(reason). Resume (`needs-human`): step 2 only.
-1. status(needs-human) (ledger `phase:"NEEDS-HUMAN"`); `set_attribute(<tn>, escalation=<reason>)`;
+1. `set_attribute(<tn>, escalation=<reason>)` first, then status(needs-human) (ledger `phase:"NEEDS-HUMAN"`);
    `set_attribute(<ws>, wsStatus=paused)`; log `needs-human <reason>: <one line>`.
 2. Report per reason as its step 2 (`fix-cap`: consolidate round `n` as FIX step 2, show `findings-R<n>.md`). Offer
    `/factory:run approve <T>` (not for `spec-failed`) and `/factory:run reject <T> "notes"`. Stop the loop.
@@ -215,7 +213,8 @@ Follow execute-loop.md § FINISH: every task done → Completion. Print: `<slug>
 
 `/factory:run approve <T>`, after Prerequisites step 0 only. Follow execute-loop.md § Human approve.
 1. `search_notes("#factoryTask #workstream='<slug>' #taskId='<T>'")` → `<tn>`; `get_attributes(<tn>)`: not
-   `#status=needs-human`, or `#escalation=spec-failed` ("nothing to merge: reject with notes") → refuse, stop.
+   `#status=needs-human`; no `#escalation` ("inconsistent state: reject with notes"); or `#escalation=spec-failed`
+   ("nothing to merge: reject with notes") → refuse, stop.
 2. doc(`Human Decision`, human-decision, `#factoryDoc=human-decision`), append-only per doc(); then
    `set_attribute(<decision>, verdict=approve, round=<#round>)`.
 3. `delete_attribute(<tn>, escalation)`; `set_attribute(<ws>, wsStatus=executing)`; log `human approve`; ledger from
