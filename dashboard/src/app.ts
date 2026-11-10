@@ -1,3 +1,4 @@
+import type { HTMLBundle } from "bun";
 import type { DashboardConfig } from "./config";
 import type { EventHub } from "./hub";
 import type { RepoEntry, RepoRegistry } from "./repos";
@@ -17,16 +18,19 @@ export interface AppDeps {
   homeDir: string;
 }
 
+/** Paths that load the web app. Only these: a `/*` route would shadow `/api/*` and `/mockups/*`, which `fetch` handles. */
+export const SPA_PATHS = ["/", "/kanban", "/docs", "/agents", "/mockups-tab"] as const;
+
 export interface App {
   fetch: (req: Request) => Promise<Response>;
-  routes: Record<string, unknown>;
+  routes: Record<string, HTMLBundle>;
   pollers: Map<string, Poller>;
   tailers: Map<string, TranscriptTailer>;
   addRepo(path: string): RepoEntry | null;
   stop(): void;
 }
 
-export function createApp(deps: AppDeps, opts: { heartbeatMs?: number } = {}): App {
+export function createApp(deps: AppDeps, opts: { heartbeatMs?: number; html?: HTMLBundle } = {}): App {
   const pollers = new Map<string, Poller>();
   const tailers = new Map<string, TranscriptTailer>();
   const lastTask = new Map<string, HookEvent>();
@@ -67,5 +71,7 @@ export function createApp(deps: AppDeps, opts: { heartbeatMs?: number } = {}): A
   }
 
   const api = createApi({ deps, pollers, addRepo, tailers, lastTask, refresh, heartbeatMs: opts.heartbeatMs });
-  return { fetch: api.fetch, routes: {}, pollers, tailers, addRepo, stop };
+  const html = opts.html;
+  const routes: Record<string, HTMLBundle> = html ? Object.fromEntries(SPA_PATHS.map((p) => [p, html])) : {};
+  return { fetch: api.fetch, routes, pollers, tailers, addRepo, stop };
 }
