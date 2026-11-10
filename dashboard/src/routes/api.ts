@@ -6,10 +6,12 @@ import { labelsOf } from "../trilium/mapper";
 import type { TranscriptTailer } from "../agents/tailer";
 import type { HookEvent } from "../shared/types";
 import { handleEvent } from "./events";
+import { streamRoute } from "./stream";
 
 interface Ctx {
   deps: AppDeps; pollers: Map<string, Poller>; addRepo(path: string): RepoEntry | null;
   tailers: Map<string, TranscriptTailer>; lastTask: Map<string, HookEvent>; refresh(repoKey: string): void;
+  heartbeatMs?: number;
 }
 type Handler = (req: Request, url: URL, params: string[]) => Promise<Response> | Response;
 
@@ -156,6 +158,12 @@ export function createApi(ctx: Ctx) {
     return json({ steps, finished: !!agent.finishedAt });
   };
 
+  const stream: Handler = (req) => streamRoute(req, {
+    hub: deps.hub, repos: deps.repos, heartbeatMs: ctx.heartbeatMs,
+    snapshot: (k) => pollers.get(k)?.snapshot() ?? null,
+    live: (k) => deps.registry.list(k).live,
+  });
+
   const routes: { method: string; re: RegExp; handler: Handler }[] = [
     { method: "GET", re: /^\/api\/health$/, handler: health },
     { method: "GET", re: /^\/api\/repos$/, handler: listRepos },
@@ -165,6 +173,7 @@ export function createApi(ctx: Ctx) {
     { method: "POST", re: /^\/api\/events$/, handler: events },
     { method: "GET", re: /^\/api\/agents$/, handler: agents },
     { method: "GET", re: /^\/api\/agents\/([^/]+)\/steps$/, handler: agentSteps },
+    { method: "GET", re: /^\/api\/stream$/, handler: stream },
     { method: "GET", re: /^\/api\/tasks\/([^/]+)$/, handler: task },
   ];
 

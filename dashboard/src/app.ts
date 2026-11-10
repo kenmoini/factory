@@ -25,7 +25,7 @@ export interface App {
   stop(): void;
 }
 
-export function createApp(deps: AppDeps): App {
+export function createApp(deps: AppDeps, opts: { heartbeatMs?: number } = {}): App {
   const pollers = new Map<string, Poller>();
   const tailers = new Map<string, TranscriptTailer>();
   const lastTask = new Map<string, HookEvent>();
@@ -63,6 +63,6 @@ export function createApp(deps: AppDeps): App {
     tailers.clear();
   }
 
-  const api = createApi({ deps, pollers, addRepo, tailers, lastTask, refresh });
+  const api = createApi({ deps, pollers, addRepo, tailers, lastTask, refresh, heartbeatMs: opts.heartbeatMs });
   return { fetch: api.fetch, routes: {}, pollers, addRepo, stop };
 }

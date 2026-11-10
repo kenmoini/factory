@@ -16,12 +16,28 @@ import { loadFixtureNotes, startFakeEtapi } from "./fake-etapi";
 const cleanups: (() => void)[] = [];
 let repoDir: string;
 
-function boot(fake: { url: string }, token: string, homeDir = "") {
+async function readUntil(reader: ReadableStreamDefaultReader<Uint8Array>, pred: (acc: string) => boolean, timeoutMs: number): Promise<string> {
+  const dec = new TextDecoder();
+  let acc = "";
+  const deadline = Date.now() + timeoutMs;
+  while (!pred(acc)) {
+    const left = deadline - Date.now();
+    if (left <= 0) throw new Error(`readUntil timeout; got: ${JSON.stringify(acc)}`);
+    const r = await Promise.race([reader.read(), Bun.sleep(left).then(() => "timeout" as const)]);
+    if (r === "timeout") throw new Error(`readUntil timeout; got: ${JSON.stringify(acc)}`);
+    if (r.done) throw new Error(`stream ended; got: ${JSON.stringify(acc)}`);
+    acc += dec.decode(r.value);
+  }
+  return acc;
+}
+
+function boot(fake: { url: string }, token: string, homeDir = "", opts: { heartbeatMs?: number } = {}) {
   const config: DashboardConfig = { triliumUrl: fake.url, etapiToken: token, port: 0, pollMs: 60000, configDir: "", homeDir };
-  const app = createApp({ config, client: new TriliumClient({ baseUrl: fake.url, token }), repos: new RepoRegistry(), hub: new EventHub(), registry: new AgentRegistry(), homeDir });
+  const hub = new EventHub();
+  const app = createApp({ config, client: new TriliumClient({ baseUrl: fake.url, token }), repos: new RepoRegistry(), hub, registry: new AgentRegistry(), homeDir }, opts);
   const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: app.fetch });
   cleanups.push(() => { app.stop(); server.stop(true); });
-  return { app, base: `http://127.0.0.1:${server.port}` };
+  return { app, hub, base: `http://127.0.0.1:${server.port}` };
 }
 
 let fake: ReturnType<typeof startFakeEtapi>;
@@ -134,5 +150,41 @@ describe("dashboard server", () => {
     expect(ag.lastTaskEvent.task).toBe("T-001");
     const after: any = await (await fetch(`${base}/api/agents/a1/steps`)).json();
     expect(after.finished).toBe(true);
+  });
+
+  test("sse stream: snapshot, agent, heartbeat, abort cleanup", async () => {
+    const home = mkdtempSync(join(tmpdir(), "factory-home-"));
+    cleanups.push(() => rmSync(home, { recursive: true, force: true }));
+    const dir = join(home, ".claude/projects", cwdSlug(repoDir), "s1/subagents");
+    mkdirSync(dir, { recursive: true });
+    const fx = join(import.meta.dir, "../fixtures/transcripts/agent-sample");
+    copyFileSync(`${fx}.jsonl`, join(dir, "agent-a1.jsonl"));
+    copyFileSync(`${fx}.meta.json`, join(dir, "agent-a1.meta.json"));
+
+    const { app, hub, base } = boot(fake, "good", home, { heartbeatMs: 50 });
+    app.addRepo(repoDir);
+    const q = encodeURIComponent(repoDir);
+    expect((await fetch(`${base}/api/stream?repo=nope`)).status).toBe(404);
+    expect((await fetch(`${base}/api/state?repo=${q}`)).status).toBe(200);
+
+    const ac = new AbortController();
+    const res = await fetch(`${base}/api/stream?repo=${q}`, { signal: ac.signal });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+    expect(res.headers.get("cache-control")).toBe("no-cache");
+    const reader = res.body!.getReader();
+    const first = await readUntil(reader, (a) => a.includes(": connected") && a.includes("event: snapshot"), 2000);
+    expect(first).toContain("event: snapshot");
+    expect(hub.count(repoDir)).toBe(1);
+
+    const r = await fetch(`${base}/api/events`, { method: "POST", body: JSON.stringify({ event: "subagent-start", ts: "x", project: repoDir, payload: { agent_id: "a1", agent_type: "factory:builder", session_id: "s1", cwd: repoDir } }) });
+    expect(r.status).toBe(204);
+    await readUntil(reader, (a) => a.includes("event: agent"), 2000);
+    await readUntil(reader, (a) => a.includes("event: heartbeat"), 1000);
+
+    ac.abort();
+    const t0 = Date.now();
+    while (hub.count(repoDir) > 0 && Date.now() - t0 < 500) await Bun.sleep(10);
+    expect(hub.count(repoDir)).toBe(0);
   });
 });
