@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pantry / barcode-scanning: factory board (mockup)</title>
+<style>
+/* ==========================================================================
+   1. Tokens
+   Yellow ("lamp") means exactly one thing: an agent is running right now.
+   Red means a person or a fix is needed. Everything else stays graphite.
+   ========================================================================== */
+:root {
+  --floor: #1C1E21;
+  --bay: #222528;
+  --plate: #2B2F33;
+  --plate-hover: #31363B;
+  --drawer: #25282C;
+  --rule: #3B4045;
+  --rule-soft: #30353A;
+  --ink: #ECE8E1;
+  --ink-2: #B5B9BE;
+  --ink-3: #969BA1;
+  --lamp: #F2C14E;
+  --lamp-wash: rgba(242, 193, 78, .07);
+  --lamp-edge: rgba(242, 193, 78, .3);
+  --pass: #7CC795;
+  --pass-wash: rgba(124, 199, 149, .14);
+  --changes: #F27C76;
+  --changes-wash: rgba(242, 124, 118, .14);
+  --pending: #A9AEB4;
+  --pending-wash: rgba(169, 174, 180, .13);
+  --f-text: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
+  --f-cond: "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", "Avenir Next", system-ui, sans-serif;
+  --f-code: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --drawer-w: clamp(340px, 35vw, 440px);
+  --pad: 16px;
+  color-scheme: dark;
+}
+
+/* ==========================================================================
+   2. Base
+   ========================================================================== */
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--floor);
+  color: var(--ink);
+  font: 400 14px/1.45 var(--f-text);
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, p, ol, ul { margin: 0; }
+ol, ul { padding: 0; list-style: none; }
+button, select { font: inherit; color: inherit; }
+button { background: none; border: 0; padding: 0; cursor: pointer; }
+code { font-family: var(--f-code); font-size: .9em; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 3px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ==========================================================================
+   3. Chrome: brand, repo/workstream pickers, live count, tabs
+   ========================================================================== */
+.chrome { border-bottom: 1px solid var(--rule-soft); }
+.chrome-row { display: flex; align-items: center; gap: 24px; padding: 12px 20px 6px; }
+.brand { font: 800 22px/1 var(--f-cond); letter-spacing: .01em; }
+.pickers { display: flex; gap: 16px; }
+.pick { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-3); }
+.pick select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 5px 28px 5px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  background: var(--bay) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23B5B9BE' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 10px center;
+  font: 600 13.5px/1.2 var(--f-text);
+  color: var(--ink);
+  cursor: pointer;
+}
+.pick select:hover { border-color: #50565C; }
+.live-count { margin-left: auto; display: flex; align-items: center; gap: 9px; font: 600 13px/1 var(--f-text); color: var(--lamp); }
+
+.tabs { display: flex; align-items: center; padding: 0 12px; overflow-x: auto; scrollbar-width: none; }
+.tab {
+  padding: 9px 9px 10px;
+  border-bottom: 2px solid transparent;
+  font: 600 14.5px/1 var(--f-cond);
+  letter-spacing: .01em;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.tab:hover { color: var(--ink); }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+.tab-sep { flex: none; width: 1px; height: 14px; margin: 0 7px; background: var(--rule); }
+
+/* ==========================================================================
+   4. Board: milestone tape and the seven lanes
+   ========================================================================== */
+main { position: relative; min-height: 0; }
+.board-panel { position: relative; height: 100%; overflow: hidden; container-type: inline-size; }
+.board-scroll { display: flex; flex-direction: column; height: 100%; overflow: auto; padding: 14px var(--pad) 20px; }
+
+.milestones { display: flex; flex-wrap: wrap; gap: 6px 30px; margin: 0 4px 14px; font-size: 13px; color: var(--ink-2); }
+.milestones li { display: flex; align-items: center; gap: 8px; }
+.ms-code { font: 700 13.5px/1 var(--f-cond); color: var(--ink); }
+.tape { display: flex; gap: 2px; }
+.tape i { width: 14px; height: 6px; border-radius: 1px; background: #4A5056; }
+.tape .t-done { background: var(--ink-2); }
+.tape .t-run { background: var(--lamp); }
+.tape .t-human { background: var(--changes); }
+.tape .t-todo { background: transparent; box-shadow: inset 0 0 0 1px #4A5056; }
+.ms-count { font-size: 12.5px; color: var(--ink-3); }
+
+/* Lanes keep their width when the drawer opens; the extra right padding lets you scroll the hidden lanes into view. */
+.lanes { flex: 1 0 auto; box-sizing: content-box; min-width: calc(100cqw - 2 * var(--pad)); display: grid; grid-template-columns: repeat(7, minmax(132px, 1fr)); gap: 8px; }
+.drawer-open .lanes { padding-right: var(--drawer-w); }
+.lane { display: flex; flex-direction: column; gap: 6px; padding: 0 6px 8px; border-radius: 8px; background: var(--bay); }
+.lane-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; padding: 11px 5px 8px; border-bottom: 2px solid var(--rule-soft); margin-bottom: 2px; }
+.lane-head h2 { font: 700 15.5px/1.1 var(--f-cond); letter-spacing: .01em; }
+.lane-count { font: 600 12.5px/1 var(--f-text); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.lane.is-live .lane-head { border-bottom-color: var(--lamp); }
+.lane.is-human { background: repeating-linear-gradient(-45deg, transparent 0 9px, rgba(242, 124, 118, .045) 9px 18px), var(--bay); }
+.lane.is-human .lane-head { border-bottom-color: var(--changes); }
+
+/* ==========================================================================
+   5. Cards: title, milestone chip, round, agent + model, elapsed
+   ========================================================================== */
+.card {
+  position: relative;
+  display: grid;
+  gap: 7px;
+  padding: 9px 10px 10px;
+  border-radius: 6px;
+  background: var(--plate);
+  box-shadow: inset 0 0 0 1px var(--rule-soft);
+}
+.card:hover { background: var(--plate-hover); }
+.card h3 { font: 600 14.5px/1.22 var(--f-cond); letter-spacing: .005em; }
+.card-open { text-align: left; }
+.card-open::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.card-open:focus-visible { outline: none; }
+.card:has(.card-open:focus-visible) { outline: 2px solid var(--ink); outline-offset: 2px; }
+.card.is-selected { outline: 1.5px solid var(--ink); outline-offset: 1px; }
+
+.card-meta { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ms-chip {
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  font: 500 12px/1 var(--f-cond);
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ms-chip b { margin-right: 4px; font-weight: 700; color: var(--ink); }
+.round { flex: none; margin-left: auto; padding: 3px 5px; border-radius: 3px; background: rgba(236, 232, 225, .1); font: 700 12px/1 var(--f-cond); }
+
+.card-agent { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 7px; font: 500 13px/1.25 var(--f-cond); color: var(--ink-2); }
+.agent { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-agent time { margin-left: auto; font: 500 12.5px/1.25 var(--f-text); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.card-note { font-size: 12.5px; line-height: 1.35; color: var(--ink-2); }
+.card-note code { color: var(--ink); }
+
+/* Reviewer verdict chips (Reviewers lane and drawer) */
+.verdicts { display: flex; flex-wrap: wrap; gap: 4px; }
+.v { display: inline-flex; align-items: center; gap: 4px; padding: 3px 6px 3px 5px; border-radius: 3px; font: 600 12px/1.15 var(--f-cond); white-space: nowrap; }
+.v::before { font: 700 10.5px/1 var(--f-text); }
+.v-pass { color: var(--pass); background: var(--pass-wash); }
+.v-pass::before { content: "\2713"; }
+.v-changes { color: var(--changes); background: var(--changes-wash); }
+.v-changes::before { content: "\2717"; }
+.v-pending { color: var(--pending); background: var(--pending-wash); }
+.v-pending::before { content: "\25CB"; }
+
+.escalation { justify-self: start; padding: 4px 7px; border-radius: 3px; background: var(--changes); color: var(--floor); font: 700 12.5px/1 var(--f-cond); letter-spacing: .01em; }
+.lane.is-human .card { box-shadow: inset 0 0 0 1px rgba(242, 124, 118, .35); }
+.card.is-done h3 { color: var(--ink-2); }
+
+/* Running card: the lamp is on */
+.card.is-running {
+  background: linear-gradient(var(--lamp-wash), var(--lamp-wash)), var(--plate);
+  box-shadow: inset 3px 0 0 var(--lamp), inset 0 0 0 1px var(--lamp-edge);
+  animation: breathe 2.4s ease-in-out infinite;
+}
+.card.is-running .card-agent { color: var(--ink); }
+.card.is-running time { color: var(--lamp); }
+
+/* ==========================================================================
+   6. Live pulse (the only ambient motion on the page)
+   ========================================================================== */
+.pulse { position: relative; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--lamp); }
+.pulse::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--lamp); animation: ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; }
+@keyframes ping { 75%, 100% { transform: scale(2.6); opacity: 0; } }
+@keyframes breathe {
+  50% { box-shadow: inset 3px 0 0 var(--lamp), inset 0 0 0 1px rgba(242, 193, 78, .55), 0 0 0 4px rgba(242, 193, 78, .08); }
+}
+
+/* ==========================================================================
+   7. Drawer: task spec, reviews, approval, live steps
+   ========================================================================== */
+.drawer {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: var(--drawer-w);
+  display: flex;
+  flex-direction: column;
+  background: var(--drawer);
+  border-left: 1px solid var(--rule);
+  box-shadow: -28px 0 40px -28px rgba(0, 0, 0, .7);
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform .24s cubic-bezier(.2, .7, .2, 1), visibility 0s linear .24s;
+}
+.drawer:not(.is-live) :is(.run-line, .branch, .drawer-steps) { display: none; }
+#drawer-meta { display: contents; }
+.drawer-open .drawer { transform: none; visibility: visible; transition: transform .24s cubic-bezier(.2, .7, .2, 1); }
+.drawer-head { padding: 12px 20px 14px; border-bottom: 1px solid var(--rule-soft); }
+.drawer-top { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--ink-3); }
+.drawer-top strong { font: 700 13px/1 var(--f-cond); color: var(--ink-2); }
+.close { margin-left: auto; width: 28px; height: 28px; border-radius: 5px; font-size: 20px; line-height: 1; color: var(--ink-2); }
+.close:hover { background: var(--plate); color: var(--ink); }
+.drawer h2 { margin: 4px 0 10px; font: 700 25px/1.1 var(--f-cond); letter-spacing: -.005em; }
+.drawer-facts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.drawer-facts .round { margin-left: 0; }
+.branch { font-size: 11.5px; color: var(--ink-3); }
+.run-line { display: flex; align-items: center; gap: 9px; margin-top: 12px; font-size: 13px; }
+.run-line time { color: var(--lamp); font-variant-numeric: tabular-nums; }
+
+.drawer-body { flex: 1; overflow-y: auto; padding: 0 20px 24px; }
+.section { padding: 15px 0; border-bottom: 1px solid var(--rule-soft); }
+.section:last-child { border-bottom: 0; }
+.section h3 { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font: 700 14.5px/1.2 var(--f-cond); color: var(--ink-2); }
+.spec p, .spec li, .approval { font-size: 13.5px; line-height: 1.5; }
+.spec ul { margin-top: 6px; padding-left: 1.1em; list-style: disc; }
+.spec li::marker { color: var(--ink-3); }
+.approval { color: var(--ink-2); }
+
+.reviews li { display: grid; grid-template-columns: 84px 1fr; gap: 10px; align-items: start; padding: 4px 0; }
+.reviews .v { justify-self: start; }
+.reviews p { font-size: 13px; line-height: 1.45; color: var(--ink-2); }
+
+.drawer-steps { flex: none; max-height: 52%; overflow-y: auto; padding: 13px 20px 12px; border-top: 1px solid var(--rule); background: #202326; }
+.drawer-steps h3 { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font: 700 14.5px/1.2 var(--f-cond); color: var(--ink-2); }
+.live-tag { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; font: 600 12px/1 var(--f-text); color: var(--lamp); }
+.steps li { display: grid; grid-template-columns: 36px 1fr auto; gap: 10px; align-items: baseline; padding: 6px 0; }
+.steps time { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.step-text { font-size: 13px; line-height: 1.45; color: var(--ink-2); }
+.step-tool { font: 12px/1.5 var(--f-code); color: var(--ink); overflow-wrap: anywhere; }
+.step-tool b { font-weight: 600; }
+.res { font: 600 12px/1 var(--f-text); white-space: nowrap; }
+.res-ok { color: var(--pass); }
+.res-err { color: var(--changes); }
+.res-run { display: inline-flex; align-items: center; gap: 7px; color: var(--lamp); }
+.steps li.is-live { margin: 2px -8px 0; padding: 7px 8px; border-radius: 5px; background: var(--lamp-wash); }
+
+/* ==========================================================================
+   8. Document tabs
+   ========================================================================== */
+.doc-panel { height: 100%; overflow: auto; padding: 40px 48px 64px; }
+.doc { max-width: 66ch; }
+.doc-path { font: 12px/1.4 var(--f-code); color: var(--ink-3); }
+.doc h1 { margin: 10px 0 20px; font: 700 36px/1.05 var(--f-cond); letter-spacing: -.01em; }
+.doc-body p, .doc-body li { font-size: 16px; line-height: 1.62; }
+.doc-body p + p { margin-top: 12px; }
+.doc-body h2 { margin: 28px 0 8px; font: 700 20px/1.2 var(--f-cond); }
+.doc-body ul { padding-left: 1.2em; list-style: disc; }
+.doc-body li + li { margin-top: 6px; }
+.doc-body li::marker { color: var(--ink-3); }
+.doc-note { padding: 28px 24px; border: 1px dashed var(--rule); border-radius: 8px; font-size: 15px; line-height: 1.55; color: var(--ink-2); }
+
+/* ==========================================================================
+   9. Responsive and reduced motion
+   ========================================================================== */
+@media (max-width: 1100px) {
+  .chrome-row { gap: 18px; padding-inline: 14px; }
+  :root { --pad: 12px; }
+  .lanes { gap: 6px; }
+  .lane { padding-inline: 5px; }
+  .card { padding-inline: 9px; }
+}
+@media (max-width: 760px) {
+  .chrome-row { flex-wrap: wrap; row-gap: 10px; }
+  .pickers { order: 3; width: 100%; }
+  .lanes { grid-template-columns: repeat(7, 220px); }
+  :root { --drawer-w: 100%; }
+  .drawer-open .lanes { padding-right: 0; }
+  .doc-panel { padding: 24px 18px 48px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body class="drawer-open">
+
+<header class="chrome">
+  <div class="chrome-row">
+    <div class="brand">factory</div>
+    <div class="pickers">
+      <label class="pick"><span>Repo</span>
+        <select>
+          <option selected>pantry</option>
+          <option>ledger-cli</option>
+          <option>claude-sf</option>
+        </select>
+      </label>
+      <label class="pick"><span>Workstream</span>
+        <select>
+          <option selected>barcode-scanning</option>
+          <option>household-sharing</option>
+        </select>
+      </label>
+    </div>
+    <div class="live-count"><span class="pulse"></span>1 agent running</div>
+  </div>
+  <nav class="tabs" role="tablist" aria-label="Workstream views">
+    <button class="tab" role="tab" type="button" aria-selected="true" aria-controls="panel-board" data-tab="board">Board</button>
+    <span class="tab-sep" aria-hidden="true"></span>
+    <button class="tab" role="tab" type="button" aria-selected="false" aria-controls="panel-doc" data-doc data-tab="goal">Goal</button>
+    <button class="tab" role="tab" type="button" aria-selected="false" aria-controls="panel-doc" data-doc data-tab="standards" data-note="Lint, test and style rules that the builder and the code reviewer follow, with the commands they run. In the live dashboard it renders here from Trilium.">Standards</button>
+    <button class="tab" role="tab" type="button" aria-selected="false" aria-controls="panel-doc" data-doc data-tab="overview" data-note="What the repo is today: stack, layout and entry points, written when the factory first examined it. In the live dashboard it renders here from Trilium.">Overview</button>
+    <button class="tab" role="tab" type="button" aria-selected="false" aria-controls="panel-doc" data-doc data-tab="spec" data-note="The approved spec for this workstream. In the live dashboard it renders here from Trilium.">Spec</button>
+    <button class="tab" role="tab" type="button" aria-selected="false" aria-controls="panel-doc" data-doc data-tab="plan" data-note="Milestones and tasks, with what each task depends on. In the live dashboard it renders here from Trilium.">Plan</button>
+    <button class="tab" role="tab" type="button" aria-selected="false" aria-controls="panel-doc" data-doc data-tab="uiux" data-note="Screens, flows and states that the ux and ui-design reviewers check against. In the live dashboard it renders here from Trilium.">UI/UX</button>
+    <button class="tab" role="tab" type="button" aria-selected="false" aria-controls="panel-doc" data-doc data-tab="api" data-note="Endpoints and data shapes for this workstream. In the live dashboard it renders here from Trilium.">API</button>
+    <button class="tab" role="tab" type="button" aria-selected="false" aria-controls="panel-doc" data-doc data-tab="validation" data-note="The check, before building starts, that the spec, plan and docs agree with each other. In the live dashboard it renders here from Trilium.">Validation</button>
+    <span class="tab-sep" aria-hidden="true"></span>
+    <button class="tab" role="tab" type="button" aria-selected="false" aria-controls="panel-doc" data-tab="agents" data-note="Running and recent subagents for this repo, each with its live step list.">Agents</button>
+    <button class="tab" role="tab" type="button" aria-selected="false" aria-controls="panel-doc" data-tab="mockups" data-note="HTML mockups from .factory/mockups for this workstream, shown in a frame.">Mockups</button>
+  </nav>
+</header>
+
+<main>
+  <section class="board-panel" id="panel-board" role="tabpanel" aria-label="Board">
+    <div class="board-scroll">
+      <ol class="milestones" aria-label="Milestones">
+        <li><span class="ms-code">M1</span>Data model
+          <span class="tape" aria-hidden="true"><i title="Approver"></i><i class="t-done" title="Done"></i></span>
+          <span class="ms-count">1 of 2 done</span></li>
+        <li><span class="ms-code">M2</span>Scanner flow
+          <span class="tape" aria-hidden="true"><i title="Spec Writer"></i><i class="t-run" title="Builder, running"></i><i title="Reviewers"></i><i class="t-human" title="Needs Human"></i></span>
+          <span class="ms-count">0 of 4 done</span></li>
+        <li><span class="ms-code">M3</span>Shopping list sync
+          <span class="tape" aria-hidden="true"><i class="t-todo" title="Backlog"></i><i class="t-todo" title="Backlog"></i></span>
+          <span class="ms-count">0 of 2 done</span></li>
+      </ol>
+
+      <div class="lanes">
+        <!-- Backlog -->
+        <section class="lane" aria-labelledby="lane-backlog">
+          <header class="lane-head"><h2 id="lane-backlog">Backlog</h2><span class="lane-count">2</span></header>
+          <article class="card" data-id="T-007">
+            <h3><button class="card-open" type="button">Sync shopping list across devices</button></h3>
+            <div class="card-meta"><span class="ms-chip"><b>M3</b>Shopping list sync</span></div>
+          </article>
+          <article class="card" data-id="T-008">
+            <h3><button class="card-open" type="button">Share a list with your household</button></h3>
+            <div class="card-meta"><span class="ms-chip"><b>M3</b>Shopping list sync</span></div>
+            <p class="card-note">Depends on Sync shopping list across devices</p>
+          </article>
+        </section>
+
+        <!-- Spec Writer -->
+        <section class="lane" aria-labelledby="lane-spec">
+          <header class="lane-head"><h2 id="lane-spec">Spec Writer</h2><span class="lane-count">1</span></header>
+          <article class="card" data-id="T-005">
+            <h3><button class="card-open" type="button">Manual entry when a barcode is unknown</button></h3>
+            <div class="card-meta"><span class="ms-chip"><b>M2</b>Scanner flow</span></div>
+            <div class="card-agent"><span class="agent">spec-writer · fable</span><time>01:12</time></div>
+          </article>
+        </section>
+
+        <!-- Builder -->
+        <section class="lane is-live" aria-labelledby="lane-builder">
+          <header class="lane-head"><h2 id="lane-builder">Builder</h2><span class="lane-count">1</span></header>
+          <article class="card is-running is-selected" data-id="T-004" data-status="Builder, fixing round 1 findings">
+            <h3><button class="card-open" type="button">Scan a barcode with the camera</button></h3>
+            <div class="card-meta"><span class="ms-chip"><b>M2</b>Scanner flow</span><span class="round">R1</span></div>
+            <div class="card-agent"><span class="pulse"></span><span class="agent">builder · opus</span><time>04:37</time></div>
+          </article>
+        </section>
+
+        <!-- Reviewers -->
+        <section class="lane" aria-labelledby="lane-reviewers">
+          <header class="lane-head"><h2 id="lane-reviewers">Reviewers</h2><span class="lane-count">1</span></header>
+          <article class="card" data-id="T-003">
+            <h3><button class="card-open" type="button">Look up products by UPC</button></h3>
+            <div class="card-meta"><span class="ms-chip"><b>M2</b>Scanner flow</span><span class="round">R1</span></div>
+            <div class="verdicts">
+              <span class="v v-pass">security<span class="sr">: pass</span></span>
+              <span class="v v-pass">ux<span class="sr">: pass</span></span>
+              <span class="v v-pending">ui-design<span class="sr">: pending</span></span>
+              <span class="v v-changes">code<span class="sr">: changes requested</span></span>
+            </div>
+            <div class="card-agent"><span class="agent">4 reviewers</span><time>02:51</time></div>
+          </article>
+        </section>
+
+        <!-- Approver -->
+        <section class="lane" aria-labelledby="lane-approver">
+          <header class="lane-head"><h2 id="lane-approver">Approver</h2><span class="lane-count">1</span></header>
+          <article class="card" data-id="T-002">
+            <h3><button class="card-open" type="button">Pantry item schema and migrations</button></h3>
+            <div class="card-meta"><span class="ms-chip"><b>M1</b>Data model</span><span class="round">R2</span></div>
+            <div class="card-agent"><span class="agent">approver · opus</span><time>00:48</time></div>
+            <p class="card-note">Approved, merging to main</p>
+          </article>
+        </section>
+
+        <!-- Needs Human -->
+        <section class="lane is-human" aria-labelledby="lane-human">
+          <header class="lane-head"><h2 id="lane-human">Needs Human</h2><span class="lane-count">1</span></header>
+          <article class="card" data-id="T-006">
+            <h3><button class="card-open" type="button">Camera permission prompt</button></h3>
+            <div class="card-meta"><span class="ms-chip"><b>M2</b>Scanner flow</span><span class="round">R3</span></div>
+            <span class="escalation">fix-cap</span>
+            <p class="card-note">Code review still asks for changes after round 3</p>
+            <div class="card-agent"><span class="agent">builder · opus</span><time>18:22</time></div>
+          </article>
+        </section>
+
+        <!-- Done -->
+        <section class="lane" aria-labelledby="lane-done">
+          <header class="lane-head"><h2 id="lane-done">Done</h2><span class="lane-count">1</span></header>
+          <article class="card is-done" data-id="T-001">
+            <h3><button class="card-open" type="button">Item CRUD API</button></h3>
+            <div class="card-meta"><span class="ms-chip"><b>M1</b>Data model</span><span class="round">R1</span></div>
+            <p class="card-note">Merged <code>a41c9e2</code></p>
+          </article>
+        </section>
+      </div>
+    </div>
+
+    <!-- Drawer, open on load for the running task -->
+    <aside class="drawer is-live" id="drawer" aria-labelledby="drawer-title">
+      <div class="drawer-head">
+        <div class="drawer-top">
+          <strong id="drawer-id">T-004</strong>
+          <span id="drawer-status">Builder, fixing round 1 findings</span>
+          <button class="close" id="drawer-close" type="button" aria-label="Close task details">&times;</button>
+        </div>
+        <h2 id="drawer-title">Scan a barcode with the camera</h2>
+        <div class="drawer-facts">
+          <span id="drawer-meta"><span class="ms-chip"><b>M2</b>Scanner flow</span><span class="round">R1</span></span>
+          <code class="branch">factory/t-004-scan-barcode</code>
+        </div>
+        <div class="run-line"><span class="pulse"></span>builder · opus<time>running 04:37</time></div>
+      </div>
+
+      <div class="drawer-body">
+        <section class="section spec">
+          <h3>Task spec</h3>
+          <p>Open the camera from the Add item screen, read EAN-13 and UPC-A codes, and hand the code to product lookup. Works one-handed on a 5.4-inch phone.</p>
+          <ul>
+            <li>Reads a code within 1.5 s in normal indoor light</li>
+            <li>Shows a torch toggle when the scene is dark</li>
+            <li>Sends unknown codes to manual entry with the code filled in</li>
+          </ul>
+        </section>
+
+        <section class="section">
+          <h3>Reviews, round 1</h3>
+          <ul class="reviews">
+            <li><span class="v v-pass">security<span class="sr">: pass</span></span><p>Camera frames never leave the device. No new permissions.</p></li>
+            <li><span class="v v-changes">ux<span class="sr">: changes requested</span></span><p>The shutter sits outside the thumb zone on small phones. Move it to bottom center.</p></li>
+            <li><span class="v v-pass">ui-design<span class="sr">: pass</span></span><p>Viewfinder frame matches the UI/UX doc.</p></li>
+            <li><span class="v v-pass">code<span class="sr">: pass</span></span><p>Clean. The torch toggle could be its own hook (minor).</p></li>
+          </ul>
+        </section>
+
+        <section class="section">
+          <h3>Approval</h3>
+          <p class="approval">Not started. The approver runs once all four reviewers pass in the same round.</p>
+        </section>
+      </div>
+
+      <section class="drawer-steps" aria-label="Live steps">
+        <h3>Steps <span class="live-tag"><span class="pulse"></span>Live</span></h3>
+        <ol class="steps">
+          <li><time>04:12</time><span class="step-text">Fixing the ux finding: the shutter moves to bottom center.</span><span></span></li>
+          <li><time>04:15</time><span class="step-tool">&#9656; <b>Edit</b> &mdash; src/scanner/CameraView.tsx</span><span class="res res-ok">&#10003;</span></li>
+          <li><time>04:21</time><span class="step-tool">&#9656; <b>Bash</b> &mdash; bun test src/scanner</span><span class="res res-err">&#10007; 1 failed</span></li>
+          <li><time>04:29</time><span class="step-text">Only the shutter position changed in the snapshot. Updating it.</span><span></span></li>
+          <li class="is-live"><time>04:33</time><span class="step-tool">&#9656; <b>Bash</b> &mdash; bun test src/scanner --update-snapshots</span><span class="res res-run"><span class="pulse"></span>running</span></li>
+        </ol>
+      </section>
+    </aside>
+  </section>
+
+  <section class="doc-panel" id="panel-doc" role="tabpanel" aria-labelledby="doc-title" hidden>
+    <article class="doc">
+      <p class="doc-path" id="doc-path">ClaudeProjects/pantry/barcode-scanning/Goal</p>
+      <h1 id="doc-title">Goal</h1>
+      <div class="doc-body" id="doc-goal">
+        <p>Pantry helps a household know what food it already has before going shopping. This workstream adds barcode scanning, so an item goes in with one tap instead of typing its name.</p>
+        <h2>Done looks like</h2>
+        <ul>
+          <li>Scanning a packaged item adds it, with name and size, in under three seconds.</li>
+          <li>An unknown barcode falls back to manual entry without losing the scan.</li>
+          <li>The shopping list stays in sync across two phones in the same household.</li>
+        </ul>
+        <h2>Not in this workstream</h2>
+        <p>Reading receipts, tracking prices, and suggesting recipes.</p>
+      </div>
+      <p class="doc-note" id="doc-note" hidden></p>
+    </article>
+  </section>
+</main>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const tabs = $$('[role="tab"]');
+
+tabs.forEach(tab => tab.addEventListener('click', () => {
+  tabs.forEach(t => t.setAttribute('aria-selected', String(t === tab)));
+  const isBoard = tab.dataset.tab === 'board', isGoal = tab.dataset.tab === 'goal';
+  $('#panel-board').hidden = !isBoard;
+  $('#panel-doc').hidden = isBoard;
+  if (isBoard) return;
+  $('#doc-title').textContent = tab.textContent;
+  $('#doc-path').hidden = !('doc' in tab.dataset);
+  $('#doc-path').textContent = 'ClaudeProjects/pantry/barcode-scanning/' + tab.textContent;
+  $('#doc-goal').hidden = !isGoal;
+  $('#doc-note').hidden = isGoal;
+  $('#doc-note').textContent = tab.dataset.note || '';
+}));
+
+const select = card => $$('.card').forEach(c => c.classList.toggle('is-selected', c === card));
+function openDrawer(card) {
+  select(card);
+  $('#drawer-id').textContent = card.dataset.id;
+  $('#drawer-title').textContent = $('h3', card).textContent;
+  $('#drawer-status').textContent = card.dataset.status || $('h2', card.closest('.lane')).textContent;
+  $('#drawer-meta').innerHTML = $('.card-meta', card).innerHTML;
+  $('#drawer').classList.toggle('is-live', card.classList.contains('is-running'));
+  document.body.classList.add('drawer-open');
+}
+function closeDrawer() {
+  select(null);
+  document.body.classList.remove('drawer-open');
+}
+$$('.card-open').forEach(b => b.addEventListener('click', () => openDrawer(b.closest('.card'))));
+$('#drawer-close').addEventListener('click', closeDrawer);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+</script>
+</body>
+</html>
