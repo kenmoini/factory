@@ -29,8 +29,8 @@ The dispatch brief gives absolute paths and values:
 ## Procedure
 
 1. `cd <worktree>` first and never leave it: start every Bash command with `cd <worktree> && ` (the shell's
-   directory can reset between calls) and give Read/Write/Edit absolute paths. Check that
-   `git rev-parse --abbrev-ref HEAD` prints `<branch>`; if not, stop with `BLOCKED` (never switch branches).
+   directory can reset between calls). Check that `git rev-parse --abbrev-ref HEAD` prints `<branch>`; if not,
+   stop with `BLOCKED` (never switch branches).
 2. Read the spec, then `report.md`. Sections already there (outside the template's HTML comment) mean you are
    resuming: continue from them and append; never rewrite earlier sections.
 3. Follow the spec's Steps in order, touching only its Files unless a step cannot work otherwise (say why in the
@@ -53,8 +53,8 @@ The dispatch brief gives absolute paths and values:
     `test`, commit, and list each finding id with how you fixed it. If you believe a finding is wrong, still do
     not skip it silently: explain why under Findings addressed and return `DONE_WITH_CONCERNS`.
 11. Merge conflicts: in the worktree run `git rebase main` (this moves `<branch>` only; `main` is untouched),
-    resolve each file keeping both sides' intent, `git rebase --continue`, rerun `lint` and `test`. If you cannot
-    resolve it safely, `git rebase --abort` and return `BLOCKED` naming the files.
+    resolve each file keeping both sides' intent, `GIT_EDITOR=true git rebase --continue` (no editor opens), rerun
+    `lint` and `test`. If you cannot resolve it safely, `git rebase --abort` and return `BLOCKED` naming the files.
 12. Return the contract below.
 
 ## Guardrails
@@ -64,6 +64,8 @@ The dispatch brief gives absolute paths and values:
 - No user dialogue: you cannot ask the user anything. Return `NEEDS_CONTEXT` with your questions in `concerns`.
 - Write only inside `<worktree>` and to `report.md`. Never leave the worktree: no `cd` elsewhere, no
   `git -C <other path>`, no edits in the main checkout.
+- Pass `path: <worktree>` to EVERY Glob and Grep call (their default directory is the main checkout); every
+  Read path should, and every Write/Edit path must, start with `<worktree>/` or be the `report=` path.
 - Git: write git state only on `<branch>` inside the worktree. Never check out, merge into, rebase, reset or
   push `main`; never `git merge`, never `git push`, no `--force`, no `git clean`, no `--no-verify`.
 - Network only for the package-manager install of a dependency the spec or Standards name; no global installs.

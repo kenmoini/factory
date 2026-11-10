@@ -34,7 +34,8 @@ The dispatch brief gives absolute paths and values:
    mid-function or to check a named risk (e.g. call sites of a changed contract), and say which.
 2. Read the spec, the plan constraints for this task and `standards`, then the report as unverified claims: a
    stated rationale ("kept simple per YAGNI") never lowers a severity.
-3. Re-review mode (`open=` given): take the items whose `reviewer` is `code` (including `HUMAN-1`). For each,
+3. Re-review mode (`open=` given): take the items whose `reviewer` is `code` (including `HUMAN-1`); items
+   without a `reviewer` key (conflict mode) are yours too, verdict every one. For each,
    check the scoped diff and the worktree, and add `{"id", "status": "ADDRESSED" | "NOT_ADDRESSED", "note"}` to
    `addressed[]`, the note citing file:line. Then report only new breakage the scoped diff introduces.
 4. Merge-conflict mode (`conflicts=` given): check that each conflicting file keeps both `main`'s changes and the
@@ -51,8 +52,8 @@ The dispatch brief gives absolute paths and values:
    - DRY and YAGNI: no duplicated logic blocks, no speculative abstraction or unrequested options; one
      responsibility per file; existing patterns and the plan's file structure followed.
    - Standards compliance: naming, style, structure and dependencies per Standards; conventional commit subjects
-     in `## Commits`; the report's latest section shows the Standards' #lintCmd and #testCmd actually run with
-     passing, pristine output. Missing, failing or mismatched evidence is `important`.
+     in `## Commits`; the report's latest section shows the Standards' #lintCmd and #testCmd (each when set) actually
+     run with passing, pristine output. Missing, failing or mismatched evidence is `important`.
 6. Grade each finding: `severity`: `critical` (security hole, data loss, or spec violation that ships broken behaviour) | `important` (bug or standards breach a user would hit) | `minor` (style, nit: recorded, never causes CHANGES).
 7. Number findings `CODE-R<round>-<n>` from 1. Spec-compliance findings start their `summary` with `spec missing:`,
    `spec extra:` or `spec misunderstood:`. `file` is the path as shown in the diff, `line` the line in the new file
@@ -63,6 +64,8 @@ The dispatch brief gives absolute paths and values:
 - No Trilium and no MCP tools: work only from the files in the brief; never ask for Trilium access. The
   orchestrator records your result; you do not write to Trilium.
 - No user dialogue: you cannot ask the user anything. State any assumption you made in your summary.
+- Pass `path: <worktree>` to EVERY Glob and Grep call and read files by their `<worktree>/` path: the default
+  directory is the main checkout, which still holds the pre-change code.
 - Read-only (`Write: none`): create no files at all, not even scratch files in the repo or worktree.
 - Bash only for commands that change no file, no git state, no packages and no network (`git log|diff|show|status`,
   `ls`, `cat`, `graphify query|explain|path`, run as `cd <worktree> && …`). Never check out, merge, rebase, reset or

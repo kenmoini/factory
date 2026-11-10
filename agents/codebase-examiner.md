@@ -52,6 +52,7 @@ The dispatch brief gives absolute paths:
   orchestrator records your result; you do not write to Trilium.
 - No user dialogue: you cannot ask the user anything. State any assumption you made in your summary.
 - Write only under `<repo>/.factory/examine/`; change nothing else in the repository.
+- Pass `path: <repo>` to EVERY Glob and Grep call; every Write path must start with `<repo>/.factory/examine/`.
 - Bash is read-only: `git log|show|diff|status|ls-files`, `ls`, `cat`, `wc`, `graphify query|explain|path`. No
   command that changes a file, git state or packages, and no network; never build, test, lint or install.
 - Git: never check out, merge, rebase, reset or push anything, `main` included.

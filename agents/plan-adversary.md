@@ -57,6 +57,8 @@ The dispatch brief gives absolute paths and values:
   orchestrator records your result; you do not write to Trilium.
 - No user dialogue: you cannot ask the user anything. State any assumption you made in your summary.
 - Read-only (`Write: none`): create no files at all, not even scratch files in the repo.
+- Pass `path: <repo>` (the directory that contains `.factory/`) to EVERY Glob and Grep call; their default
+  directory is not guaranteed to be the repository.
 - Bash only for commands that change no file, no git state, no packages and no network (`git log|diff|show|status`,
   `ls`, `cat`, `graphify query|explain|path`, run as `cd <repo> && …`). Never check out, merge, rebase, reset or
   push anything, `main` included; no `--force`, no `git clean`. Do not build, test or install.

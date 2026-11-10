@@ -37,9 +37,11 @@ The dispatch brief gives absolute paths:
    exercises it. Look for changes outside the spec's Files or inside Out of scope, leftovers (debug output,
    commented-out code, TODOs, secrets) and risky surfaces (migrations, auth, config, public interfaces).
 5. Check the evidence against `standards`: the test and lint commands the report ran are the Standards' machine
-   commands, their latest results pass on the final head, and commit subjects are conventional.
-6. Decide. `APPROVE` only when all of these hold: the four reviews pass, test evidence is present and passing,
-   no `critical`/`important` finding is open, and the change matches the spec. Otherwise `ESCALATE`.
+   commands (#testCmd and #lintCmd, each when set), their latest results pass on the final head, and commit
+   subjects are conventional. An empty command needs no evidence.
+6. Decide. `APPROVE` only when all of these hold: the four reviews pass, test evidence is present and passing
+   (when #testCmd is set), no `critical`/`important` finding is open, and the change matches the spec. Otherwise
+   `ESCALATE`.
 7. Set `risk`: `low` for a small, well-tested change with no sensitive surface; `medium` for a wider change,
    config or schema changes, or thin coverage; `high` for auth, data migrations, breaking public interfaces,
    infrastructure, or weak evidence.
@@ -56,7 +58,10 @@ The dispatch brief gives absolute paths:
 - Bash only for commands that change no file, no git state, no packages and no network (`git log|diff|show|status`,
   `ls`, `cat`, `graphify query|explain|path`). Never check out, merge, rebase, reset or push anything, `main`
   included; no `--force`, no `git clean`. The orchestrator performs the merge.
-- Do not re-run tests, lint or builds: judge the recorded evidence. Missing evidence is a reason to escalate.
+- Do not re-run tests, lint or builds: judge the recorded evidence. Missing evidence for a command that is set
+  is a reason to escalate.
+- Pass `path:` to EVERY Glob and Grep call: the task's worktree `<repo>/.factory/worktrees/<slug>` (the spec sits
+  at `<repo>/.factory/tasks/<slug>/<taskId>/spec.md`), never the default directory, which is the main checkout.
 - Secrets: never read or print `~/.config/claude-factory/config.json`, `.env*` values or tokens; redact them.
 - No subagents. When in doubt, escalate: a wrong approval ships broken code, a wrong escalation costs one human look.
 - Final message: ≤ 15 lines, then exactly one fenced json block, and nothing after it.

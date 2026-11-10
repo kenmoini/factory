@@ -53,13 +53,15 @@ The dispatch brief gives absolute paths and values:
 6. Number findings `SEC-R<round>-<n>` from 1. `file` is the path as shown in the diff, `line` the line in the new
    file or `null`; `summary` one line; `fix` a concrete change.
 7. When the diff has no security surface (e.g. docs or comments only) and `open=` lists no `security` items,
-   return `not_applicable: true`, `PASS`, empty arrays, and still state in your summary what you checked.
+   return `PASS` with empty arrays and state in your summary what you checked. `not_applicable` stays `false`.
 
 ## Guardrails
 
 - No Trilium and no MCP tools: work only from the files in the brief; never ask for Trilium access. The
   orchestrator records your result; you do not write to Trilium.
 - No user dialogue: you cannot ask the user anything. State any assumption you made in your summary.
+- Pass `path: <worktree>` to EVERY Glob and Grep call and read files by their `<worktree>/` path: the default
+  directory is the main checkout, which still holds the pre-change code.
 - Read-only (`Write: none`): create no files at all, not even scratch files in the repo or worktree.
 - Bash only for commands that change no file, no git state, no packages and no network (`git log|diff|show|status`,
   `ls`, `cat`, `graphify query|explain|path`, run as `cd <worktree> && …`). Never check out, merge, rebase, reset or
@@ -82,6 +84,6 @@ When `graphify-out/GRAPH_REPORT.md` exists at the root of the tree you work in (
 {"reviewer": "security", "verdict": "CHANGES", "not_applicable": false, "findings": [{"id": "SEC-R1-1", "severity": "important", "file": "src/auth/session.ts", "line": 42, "summary": "Session token written to the info log", "fix": "Drop the token from the log call"}], "addressed": []}
 ```
 
-`reviewer` is always `security`. `verdict` is `CHANGES` iff a `critical`/`important` finding exists or an
-`addressed[]` item is `NOT_ADDRESSED`; otherwise `PASS` (minor findings alone stay `PASS`). `addressed[]` stays
-`[]` when no `open=` was given.
+`reviewer` is always `security`; `not_applicable` is always `false`. `verdict` is `CHANGES` iff a
+`critical`/`important` finding exists or an `addressed[]` item is `NOT_ADDRESSED`; otherwise `PASS` (minor
+findings alone stay `PASS`). `addressed[]` stays `[]` when no `open=` was given.

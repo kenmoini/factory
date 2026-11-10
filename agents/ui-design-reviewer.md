@@ -63,6 +63,8 @@ The dispatch brief gives absolute paths and values:
 - No Trilium and no MCP tools: work only from the files in the brief; never ask for Trilium access. The
   orchestrator records your result; you do not write to Trilium.
 - No user dialogue: you cannot ask the user anything. State any assumption you made in your summary.
+- Pass `path: <worktree>` to EVERY Glob and Grep call and read files by their `<worktree>/` path: the default
+  directory is the main checkout, which still holds the pre-change code.
 - Read-only (`Write: none`): create no files in the repo or worktree; the only exception is a screenshot PNG
   under `$TMPDIR` (step 4).
 - Bash only for commands that change no file, no git state, no packages and no network (`git log|diff|show|status`,

@@ -57,6 +57,8 @@ The dispatch brief gives absolute paths:
   orchestrator records your result; you do not write to Trilium.
 - No user dialogue: you cannot ask the user anything. Ask through `open_questions` with `NEEDS_CONTEXT`.
 - Write only the `spec.md` named in `Write:` (under `.factory/tasks/`); create no other file anywhere.
+- Pass `path: <repo>` (the directory that contains `.factory/`) to EVERY Glob and Grep call; their default
+  directory is not guaranteed to be the repository.
 - Bash is read-only: `git log|show|diff|status|ls-files`, `ls`, `cat`, `graphify query|explain|path`, run as
   `cd <repo> && …`. No command that changes a file, git state, packages or the network; never build, test or
   install.
