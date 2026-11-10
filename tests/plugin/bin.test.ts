@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "../..");
@@ -72,9 +73,18 @@ describe("bin/", () => {
     }
   });
 
-  test("factory-dashboard status degrades gracefully when dashboard is not built", () => {
-    const r = Bun.spawnSync([join(binDir, "factory-dashboard"), "status"]);
-    expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout.toString())).toEqual({ running: false, reason: "dashboard not built" });
+  test("factory-dashboard status reports not running when nothing listens", () => {
+    const cfg = mkdtempSync(join(tmpdir(), "factory-bin-"));
+    try {
+      const r = Bun.spawnSync([join(binDir, "factory-dashboard"), "status"], {
+        env: { ...process.env, FACTORY_CONFIG_DIR: cfg, FACTORY_DASHBOARD_PORT: "59871" },
+      });
+      expect(r.exitCode).toBe(0);
+      const out = JSON.parse(r.stdout.toString());
+      expect(out.running).toBe(false);
+      expect(typeof out.port).toBe("number");
+    } finally {
+      rmSync(cfg, { recursive: true, force: true });
+    }
   });
 });
