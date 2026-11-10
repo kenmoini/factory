@@ -1,0 +1,498 @@
+{
+  "results": [
+    {
+      "noteId": "t001",
+      "title": "T-001 Task T-001",
+      "type": "text",
+      "mime": "text/html",
+      "attributes": [
+        {
+          "attributeId": "a51",
+          "noteId": "t001",
+          "type": "label",
+          "name": "factoryTask",
+          "value": "",
+          "position": 10,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a52",
+          "noteId": "t001",
+          "type": "label",
+          "name": "taskId",
+          "value": "T-001",
+          "position": 20,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a53",
+          "noteId": "t001",
+          "type": "label",
+          "name": "status",
+          "value": "done",
+          "position": 30,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a54",
+          "noteId": "t001",
+          "type": "label",
+          "name": "milestoneId",
+          "value": "M1",
+          "position": 40,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a55",
+          "noteId": "t001",
+          "type": "label",
+          "name": "order",
+          "value": "1",
+          "position": 50,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a56",
+          "noteId": "t001",
+          "type": "label",
+          "name": "round",
+          "value": "0",
+          "position": 60,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a57",
+          "noteId": "t001",
+          "type": "label",
+          "name": "dependsOn",
+          "value": "",
+          "position": 70,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a58",
+          "noteId": "t001",
+          "type": "label",
+          "name": "project",
+          "value": "demo-repo",
+          "position": 80,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a59",
+          "noteId": "t001",
+          "type": "label",
+          "name": "workstream",
+          "value": "demo",
+          "position": 90,
+          "isInheritable": false
+        }
+      ],
+      "parentNoteIds": [
+        "m1"
+      ],
+      "childNoteIds": [],
+      "dateCreated": "2026-11-10 09:00:00.000+0000",
+      "dateModified": "2026-11-10 10:00:00.000+0000",
+      "utcDateCreated": "2026-11-10 09:00:00.000Z",
+      "utcDateModified": "2026-11-10 10:00:00.000Z"
+    },
+    {
+      "noteId": "t002",
+      "title": "T-002 Task T-002",
+      "type": "text",
+      "mime": "text/html",
+      "attributes": [
+        {
+          "attributeId": "a23",
+          "noteId": "t002",
+          "type": "label",
+          "name": "factoryTask",
+          "value": "",
+          "position": 10,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a24",
+          "noteId": "t002",
+          "type": "label",
+          "name": "taskId",
+          "value": "T-002",
+          "position": 20,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a25",
+          "noteId": "t002",
+          "type": "label",
+          "name": "status",
+          "value": "reviewing",
+          "position": 30,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a26",
+          "noteId": "t002",
+          "type": "label",
+          "name": "milestoneId",
+          "value": "M1",
+          "position": 40,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a27",
+          "noteId": "t002",
+          "type": "label",
+          "name": "order",
+          "value": "2",
+          "position": 50,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a28",
+          "noteId": "t002",
+          "type": "label",
+          "name": "round",
+          "value": "1",
+          "position": 60,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a29",
+          "noteId": "t002",
+          "type": "label",
+          "name": "dependsOn",
+          "value": "T-001",
+          "position": 70,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a30",
+          "noteId": "t002",
+          "type": "label",
+          "name": "project",
+          "value": "demo-repo",
+          "position": 80,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a31",
+          "noteId": "t002",
+          "type": "label",
+          "name": "workstream",
+          "value": "demo",
+          "position": 90,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a32",
+          "noteId": "t002",
+          "type": "label",
+          "name": "agentId",
+          "value": "a1",
+          "position": 100,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a33",
+          "noteId": "t002",
+          "type": "label",
+          "name": "builderAgentId",
+          "value": "a1",
+          "position": 110,
+          "isInheritable": false
+        }
+      ],
+      "parentNoteIds": [
+        "m1"
+      ],
+      "childNoteIds": [],
+      "dateCreated": "2026-11-10 09:00:00.000+0000",
+      "dateModified": "2026-11-10 10:00:00.000+0000",
+      "utcDateCreated": "2026-11-10 09:00:00.000Z",
+      "utcDateModified": "2026-11-10 10:00:00.000Z"
+    },
+    {
+      "noteId": "t003",
+      "title": "T-003 Task T-003",
+      "type": "text",
+      "mime": "text/html",
+      "attributes": [
+        {
+          "attributeId": "a60",
+          "noteId": "t003",
+          "type": "label",
+          "name": "factoryTask",
+          "value": "",
+          "position": 10,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a61",
+          "noteId": "t003",
+          "type": "label",
+          "name": "taskId",
+          "value": "T-003",
+          "position": 20,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a62",
+          "noteId": "t003",
+          "type": "label",
+          "name": "status",
+          "value": "todo",
+          "position": 30,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a63",
+          "noteId": "t003",
+          "type": "label",
+          "name": "milestoneId",
+          "value": "M1",
+          "position": 40,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a64",
+          "noteId": "t003",
+          "type": "label",
+          "name": "order",
+          "value": "3",
+          "position": 50,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a65",
+          "noteId": "t003",
+          "type": "label",
+          "name": "round",
+          "value": "0",
+          "position": 60,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a66",
+          "noteId": "t003",
+          "type": "label",
+          "name": "dependsOn",
+          "value": "T-001,T-002",
+          "position": 70,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a67",
+          "noteId": "t003",
+          "type": "label",
+          "name": "project",
+          "value": "demo-repo",
+          "position": 80,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a68",
+          "noteId": "t003",
+          "type": "label",
+          "name": "workstream",
+          "value": "demo",
+          "position": 90,
+          "isInheritable": false
+        }
+      ],
+      "parentNoteIds": [
+        "m1"
+      ],
+      "childNoteIds": [],
+      "dateCreated": "2026-11-10 09:00:00.000+0000",
+      "dateModified": "2026-11-10 10:00:00.000+0000",
+      "utcDateCreated": "2026-11-10 09:00:00.000Z",
+      "utcDateModified": "2026-11-10 10:00:00.000Z"
+    },
+    {
+      "noteId": "t004",
+      "title": "T-004 Task T-004",
+      "type": "text",
+      "mime": "text/html",
+      "attributes": [
+        {
+          "attributeId": "a34",
+          "noteId": "t004",
+          "type": "label",
+          "name": "factoryTask",
+          "value": "",
+          "position": 10,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a35",
+          "noteId": "t004",
+          "type": "label",
+          "name": "taskId",
+          "value": "T-004",
+          "position": 20,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a36",
+          "noteId": "t004",
+          "type": "label",
+          "name": "status",
+          "value": "needs-human",
+          "position": 30,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a37",
+          "noteId": "t004",
+          "type": "label",
+          "name": "milestoneId",
+          "value": "M2",
+          "position": 40,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a38",
+          "noteId": "t004",
+          "type": "label",
+          "name": "order",
+          "value": "1",
+          "position": 50,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a39",
+          "noteId": "t004",
+          "type": "label",
+          "name": "round",
+          "value": "0",
+          "position": 60,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a40",
+          "noteId": "t004",
+          "type": "label",
+          "name": "dependsOn",
+          "value": "T-002, T-003 ,",
+          "position": 70,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a41",
+          "noteId": "t004",
+          "type": "label",
+          "name": "project",
+          "value": "demo-repo",
+          "position": 80,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a42",
+          "noteId": "t004",
+          "type": "label",
+          "name": "workstream",
+          "value": "demo",
+          "position": 90,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a43",
+          "noteId": "t004",
+          "type": "label",
+          "name": "escalation",
+          "value": "builder failed twice",
+          "position": 100,
+          "isInheritable": false
+        }
+      ],
+      "parentNoteIds": [
+        "m1"
+      ],
+      "childNoteIds": [],
+      "dateCreated": "2026-11-10 09:00:00.000+0000",
+      "dateModified": "2026-11-10 10:00:00.000+0000",
+      "utcDateCreated": "2026-11-10 09:00:00.000Z",
+      "utcDateModified": "2026-11-10 10:00:00.000Z"
+    },
+    {
+      "noteId": "t005",
+      "title": "T-005 Malformed task",
+      "type": "text",
+      "mime": "text/html",
+      "attributes": [
+        {
+          "attributeId": "a44",
+          "noteId": "t005",
+          "type": "label",
+          "name": "factoryTask",
+          "value": "",
+          "position": 10,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a45",
+          "noteId": "t005",
+          "type": "label",
+          "name": "taskId",
+          "value": "T-005",
+          "position": 20,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a46",
+          "noteId": "t005",
+          "type": "label",
+          "name": "order",
+          "value": "x",
+          "position": 30,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a47",
+          "noteId": "t005",
+          "type": "label",
+          "name": "round",
+          "value": "y",
+          "position": 40,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a48",
+          "noteId": "t005",
+          "type": "label",
+          "name": "milestoneId",
+          "value": "M2",
+          "position": 50,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a49",
+          "noteId": "t005",
+          "type": "label",
+          "name": "project",
+          "value": "demo-repo",
+          "position": 60,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a50",
+          "noteId": "t005",
+          "type": "label",
+          "name": "workstream",
+          "value": "demo",
+          "position": 70,
+          "isInheritable": false
+        }
+      ],
+      "parentNoteIds": [
+        "m2"
+      ],
+      "childNoteIds": [],
+      "dateCreated": "2026-11-10 09:00:00.000+0000",
+      "dateModified": "2026-11-10 10:00:00.000+0000",
+      "utcDateCreated": "2026-11-10 09:00:00.000Z",
+      "utcDateModified": "2026-11-10 10:00:00.000Z"
+    }
+  ]
+}

@@ -1,0 +1,144 @@
+{
+  "results": [
+    {
+      "noteId": "m1",
+      "title": "M1 Foundations",
+      "type": "text",
+      "mime": "text/html",
+      "attributes": [
+        {
+          "attributeId": "a11",
+          "noteId": "m1",
+          "type": "label",
+          "name": "factoryMilestone",
+          "value": "",
+          "position": 10,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a12",
+          "noteId": "m1",
+          "type": "label",
+          "name": "milestoneId",
+          "value": "M1",
+          "position": 20,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a13",
+          "noteId": "m1",
+          "type": "label",
+          "name": "order",
+          "value": "1",
+          "position": 30,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a14",
+          "noteId": "m1",
+          "type": "label",
+          "name": "status",
+          "value": "active",
+          "position": 40,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a15",
+          "noteId": "m1",
+          "type": "label",
+          "name": "project",
+          "value": "demo-repo",
+          "position": 50,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a16",
+          "noteId": "m1",
+          "type": "label",
+          "name": "workstream",
+          "value": "demo",
+          "position": 60,
+          "isInheritable": false
+        }
+      ],
+      "parentNoteIds": [
+        "ws1"
+      ],
+      "childNoteIds": [],
+      "dateCreated": "2026-11-10 09:00:00.000+0000",
+      "dateModified": "2026-11-10 10:00:00.000+0000",
+      "utcDateCreated": "2026-11-10 09:00:00.000Z",
+      "utcDateModified": "2026-11-10 10:00:00.000Z"
+    },
+    {
+      "noteId": "m2",
+      "title": "M2 Polish",
+      "type": "text",
+      "mime": "text/html",
+      "attributes": [
+        {
+          "attributeId": "a17",
+          "noteId": "m2",
+          "type": "label",
+          "name": "factoryMilestone",
+          "value": "",
+          "position": 10,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a18",
+          "noteId": "m2",
+          "type": "label",
+          "name": "milestoneId",
+          "value": "M2",
+          "position": 20,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a19",
+          "noteId": "m2",
+          "type": "label",
+          "name": "order",
+          "value": "2",
+          "position": 30,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a20",
+          "noteId": "m2",
+          "type": "label",
+          "name": "status",
+          "value": "todo",
+          "position": 40,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a21",
+          "noteId": "m2",
+          "type": "label",
+          "name": "project",
+          "value": "demo-repo",
+          "position": 50,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a22",
+          "noteId": "m2",
+          "type": "label",
+          "name": "workstream",
+          "value": "demo",
+          "position": 60,
+          "isInheritable": false
+        }
+      ],
+      "parentNoteIds": [
+        "ws1"
+      ],
+      "childNoteIds": [],
+      "dateCreated": "2026-11-10 09:00:00.000+0000",
+      "dateModified": "2026-11-10 10:00:00.000+0000",
+      "utcDateCreated": "2026-11-10 09:00:00.000Z",
+      "utcDateModified": "2026-11-10 10:00:00.000Z"
+    }
+  ]
+}

@@ -1,0 +1,162 @@
+{
+  "results": [
+    {
+      "noteId": "r1",
+      "title": "Review T-002 r1 security",
+      "type": "text",
+      "mime": "text/html",
+      "attributes": [
+        {
+          "attributeId": "a74",
+          "noteId": "r1",
+          "type": "label",
+          "name": "factoryReview",
+          "value": "",
+          "position": 10,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a75",
+          "noteId": "r1",
+          "type": "label",
+          "name": "taskId",
+          "value": "T-002",
+          "position": 20,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a76",
+          "noteId": "r1",
+          "type": "label",
+          "name": "round",
+          "value": "1",
+          "position": 30,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a77",
+          "noteId": "r1",
+          "type": "label",
+          "name": "reviewer",
+          "value": "security",
+          "position": 40,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a78",
+          "noteId": "r1",
+          "type": "label",
+          "name": "verdict",
+          "value": "PASS",
+          "position": 50,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a79",
+          "noteId": "r1",
+          "type": "label",
+          "name": "project",
+          "value": "demo-repo",
+          "position": 60,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a80",
+          "noteId": "r1",
+          "type": "label",
+          "name": "workstream",
+          "value": "demo",
+          "position": 70,
+          "isInheritable": false
+        }
+      ],
+      "parentNoteIds": [
+        "t002"
+      ],
+      "childNoteIds": [],
+      "dateCreated": "2026-11-10 09:00:00.000+0000",
+      "dateModified": "2026-11-10 10:00:00.000+0000",
+      "utcDateCreated": "2026-11-10 09:00:00.000Z",
+      "utcDateModified": "2026-11-10 10:05:00.000Z"
+    },
+    {
+      "noteId": "r2",
+      "title": "Review T-002 r1 code",
+      "type": "text",
+      "mime": "text/html",
+      "attributes": [
+        {
+          "attributeId": "a81",
+          "noteId": "r2",
+          "type": "label",
+          "name": "factoryReview",
+          "value": "",
+          "position": 10,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a82",
+          "noteId": "r2",
+          "type": "label",
+          "name": "taskId",
+          "value": "T-002",
+          "position": 20,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a83",
+          "noteId": "r2",
+          "type": "label",
+          "name": "round",
+          "value": "1",
+          "position": 30,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a84",
+          "noteId": "r2",
+          "type": "label",
+          "name": "reviewer",
+          "value": "code",
+          "position": 40,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a85",
+          "noteId": "r2",
+          "type": "label",
+          "name": "verdict",
+          "value": "CHANGES",
+          "position": 50,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a86",
+          "noteId": "r2",
+          "type": "label",
+          "name": "project",
+          "value": "demo-repo",
+          "position": 60,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a87",
+          "noteId": "r2",
+          "type": "label",
+          "name": "workstream",
+          "value": "demo",
+          "position": 70,
+          "isInheritable": false
+        }
+      ],
+      "parentNoteIds": [
+        "t002"
+      ],
+      "childNoteIds": [],
+      "dateCreated": "2026-11-10 09:00:00.000+0000",
+      "dateModified": "2026-11-10 10:00:00.000+0000",
+      "utcDateCreated": "2026-11-10 09:00:00.000Z",
+      "utcDateModified": "2026-11-10 10:06:00.000Z"
+    }
+  ]
+}

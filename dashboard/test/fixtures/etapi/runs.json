@@ -1,0 +1,92 @@
+{
+  "results": [
+    {
+      "noteId": "run1",
+      "title": "2026-11-10T10:00:00Z builder a1",
+      "type": "text",
+      "mime": "text/html",
+      "attributes": [
+        {
+          "attributeId": "a88",
+          "noteId": "run1",
+          "type": "label",
+          "name": "factoryAgentRun",
+          "value": "",
+          "position": 10,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a89",
+          "noteId": "run1",
+          "type": "label",
+          "name": "agentType",
+          "value": "builder",
+          "position": 20,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a90",
+          "noteId": "run1",
+          "type": "label",
+          "name": "agentId",
+          "value": "a1",
+          "position": 30,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a91",
+          "noteId": "run1",
+          "type": "label",
+          "name": "status",
+          "value": "running",
+          "position": 40,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a92",
+          "noteId": "run1",
+          "type": "label",
+          "name": "startedAt",
+          "value": "2026-11-10T10:00:00Z",
+          "position": 50,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a93",
+          "noteId": "run1",
+          "type": "label",
+          "name": "taskId",
+          "value": "T-002",
+          "position": 60,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a94",
+          "noteId": "run1",
+          "type": "label",
+          "name": "project",
+          "value": "demo-repo",
+          "position": 70,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a95",
+          "noteId": "run1",
+          "type": "label",
+          "name": "workstream",
+          "value": "demo",
+          "position": 80,
+          "isInheritable": false
+        }
+      ],
+      "parentNoteIds": [
+        "t002"
+      ],
+      "childNoteIds": [],
+      "dateCreated": "2026-11-10 09:00:00.000+0000",
+      "dateModified": "2026-11-10 10:00:00.000+0000",
+      "utcDateCreated": "2026-11-10 09:00:00.000Z",
+      "utcDateModified": "2026-11-10 10:00:00.000Z"
+    }
+  ]
+}

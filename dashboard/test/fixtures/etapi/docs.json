@@ -1,0 +1,97 @@
+{
+  "results": [
+    {
+      "noteId": "d1",
+      "title": "Goal",
+      "type": "text",
+      "mime": "text/html",
+      "attributes": [
+        {
+          "attributeId": "a69",
+          "noteId": "d1",
+          "type": "label",
+          "name": "factoryDoc",
+          "value": "goal",
+          "position": 10,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a70",
+          "noteId": "d1",
+          "type": "label",
+          "name": "approval",
+          "value": "approved",
+          "position": 20,
+          "isInheritable": false
+        }
+      ],
+      "parentNoteIds": [
+        "proj1"
+      ],
+      "childNoteIds": [],
+      "dateCreated": "2026-11-10 09:00:00.000+0000",
+      "dateModified": "2026-11-10 10:00:00.000+0000",
+      "utcDateCreated": "2026-11-10 09:00:00.000Z",
+      "utcDateModified": "2026-11-10 10:00:00.000Z"
+    },
+    {
+      "noteId": "d2",
+      "title": "Spec",
+      "type": "text",
+      "mime": "text/html",
+      "attributes": [
+        {
+          "attributeId": "a71",
+          "noteId": "d2",
+          "type": "label",
+          "name": "factoryDoc",
+          "value": "spec",
+          "position": 10,
+          "isInheritable": false
+        },
+        {
+          "attributeId": "a72",
+          "noteId": "d2",
+          "type": "label",
+          "name": "approval",
+          "value": "approved",
+          "position": 20,
+          "isInheritable": false
+        }
+      ],
+      "parentNoteIds": [
+        "ws1"
+      ],
+      "childNoteIds": [],
+      "dateCreated": "2026-11-10 09:00:00.000+0000",
+      "dateModified": "2026-11-10 10:00:00.000+0000",
+      "utcDateCreated": "2026-11-10 09:00:00.000Z",
+      "utcDateModified": "2026-11-10 10:00:00.000Z"
+    },
+    {
+      "noteId": "d3",
+      "title": "API Design",
+      "type": "code",
+      "mime": "text/x-markdown",
+      "attributes": [
+        {
+          "attributeId": "a73",
+          "noteId": "d3",
+          "type": "label",
+          "name": "factoryDoc",
+          "value": "api-design",
+          "position": 10,
+          "isInheritable": false
+        }
+      ],
+      "parentNoteIds": [
+        "ws1"
+      ],
+      "childNoteIds": [],
+      "dateCreated": "2026-11-10 09:00:00.000+0000",
+      "dateModified": "2026-11-10 10:00:00.000+0000",
+      "utcDateCreated": "2026-11-10 09:00:00.000Z",
+      "utcDateModified": "2026-11-10 10:00:00.000Z"
+    }
+  ]
+}
