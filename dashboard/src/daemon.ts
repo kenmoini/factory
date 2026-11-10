@@ -76,12 +76,39 @@ async function status(): Promise<{ running: boolean; pid?: number }> {
   return { running, pid };
 }
 
+function isOurServer(pid: number): boolean {
+  try {
+    const r = Bun.spawnSync(["ps", "-o", "command=", "-p", String(pid)], { stdout: "pipe", stderr: "ignore" });
+    return r.exitCode === 0 && r.stdout.toString().includes("dashboard/src/server.ts");
+  } catch { return false; }
+}
+
+async function terminate(pid: number): Promise<void> {
+  try { process.kill(pid, "SIGTERM"); } catch { /* raced */ }
+  const deadline = Date.now() + 5000;
+  while (alive(pid) && Date.now() < deadline) await sleep(100);
+  if (alive(pid)) { try { process.kill(pid, "SIGKILL"); } catch { /* gone */ } }
+}
+
 async function start(): Promise<number> {
   const existing = readPid();
-  if (existing !== undefined && alive(existing) && (await healthy())) {
-    print({ running: true, port, pid: existing, url });
-    if (args.open) openUrl();
-    return 0;
+  let replaced: number | undefined;
+  if (existing !== undefined && alive(existing)) {
+    if (isOurServer(existing)) {
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        if (await healthy()) {
+          print({ running: true, port, pid: existing, url });
+          if (args.open) openUrl();
+          return 0;
+        }
+        await sleep(200);
+      }
+      await terminate(existing);
+      replaced = existing;
+    } else {
+      rmSync(pidFile, { force: true }); // pid reused by an unrelated process
+    }
   }
   mkdirSync(configDir, { recursive: true });
   const logFd = openSync(logFile, "a");
@@ -95,18 +122,25 @@ async function start(): Promise<number> {
     });
   } finally { closeSync(logFd); }
   proc.unref();
-  writeFileSync(pidFile, String(proc.pid));
+  try {
+    writeFileSync(pidFile, String(proc.pid));
+  } catch (e) {
+    try { process.kill(proc.pid, "SIGKILL"); } catch { /* gone */ }
+    print({ running: false, error: `cannot write pidfile: ${(e as Error).message}`, log: logFile });
+    return 1;
+  }
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
+    if (proc.exitCode !== null) break;
     if (await healthy()) {
-      print({ running: true, port, pid: proc.pid, url });
+      if (proc.exitCode !== null) break;
+      print({ running: true, port, pid: proc.pid, url, ...(replaced !== undefined ? { replaced } : {}) });
       if (args.open) openUrl();
       return 0;
     }
-    if (!alive(proc.pid)) break;
     await sleep(200);
   }
-  const wasAlive = alive(proc.pid);
+  const wasAlive = proc.exitCode === null && alive(proc.pid);
   if (wasAlive) { try { process.kill(proc.pid, "SIGKILL"); } catch { /* gone */ } }
   rmSync(pidFile, { force: true });
   print({
@@ -125,10 +159,12 @@ async function stop(): Promise<number> {
     print({ running: false });
     return 0;
   }
-  try { process.kill(pid, "SIGTERM"); } catch { /* raced */ }
-  const deadline = Date.now() + 5000;
-  while (alive(pid) && Date.now() < deadline) await sleep(100);
-  if (alive(pid)) { try { process.kill(pid, "SIGKILL"); } catch { /* gone */ } }
+  if (!isOurServer(pid)) {
+    rmSync(pidFile, { force: true });
+    print({ running: false, stale: true });
+    return 0;
+  }
+  await terminate(pid);
   rmSync(pidFile, { force: true });
   print({ running: false, stopped: pid });
   return 0;

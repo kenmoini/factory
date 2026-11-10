@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadFixtureNotes, startFakeEtapi, type FakeEtapi } from "./integration/fake-etapi";
@@ -72,5 +72,28 @@ describe("daemon lifecycle", () => {
     const s2 = run("status");
     expect(s2.code).toBe(0);
     expect(s2.json.running).toBe(false);
+  }, 30000);
+
+  test("stale pidfile with an unrelated live pid is not killed", () => {
+    const victim = Bun.spawn(["sleep", "60"], { stdio: ["ignore", "ignore", "ignore"] });
+    const pidFile = join(dir, "dashboard.pid");
+    try {
+      writeFileSync(pidFile, String(victim.pid));
+      const st = run("stop");
+      expect(st.code).toBe(0);
+      expect(st.json).toEqual({ running: false, stale: true });
+      expect(alive(victim.pid)).toBe(true);
+      expect(existsSync(pidFile)).toBe(false);
+
+      writeFileSync(pidFile, String(victim.pid));
+      const s = run("start");
+      expect(s.code).toBe(0);
+      expect(s.json.running).toBe(true);
+      expect(s.json.pid).not.toBe(victim.pid);
+      expect(alive(victim.pid)).toBe(true);
+      expect(run("stop").code).toBe(0);
+    } finally {
+      victim.kill("SIGKILL");
+    }
   }, 30000);
 });
