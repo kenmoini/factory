@@ -15,9 +15,10 @@ Run every `graphify` command from `<repoPath>` (`cd "<repoPath>" && graphify …
 ## Procedure
 
 1. **Build or update.** Check `test -s "<repoPath>/graphify-out/graph.json"` (preflight `graphify.outPresent`).
-   - Missing → full build (LLM-assisted, may take minutes): tell the user one line, then invoke the Skill tool with
-     skill `graphify` and args `.` (the `/graphify .` build; if `pwd` is not `<repoPath>`, pass `<repoPath>` instead
-     of `.`). Follow the skill's instructions to the end; continue only when `graph.json` exists.
+   - Missing → full build (LLM-assisted, may take minutes): tell the user one line; run `cd "<repoPath>"` in Bash
+     (the session keeps that working directory), then invoke the Skill tool with skill `graphify` and args `.` (the
+     `/graphify .` build; always `.`, never a path). Follow the skill's instructions to the end; continue only when
+     `graph.json` exists.
      No `graphify` skill in your available skills list → tell the user it loads after `graphify install` and a
      Claude Code restart (setup step 5 runs `graphify install`); stop the stage (see Stopped below).
    - Present → `cd "<repoPath>" && graphify update .` (incremental, code only, no LLM). Non-zero exit → show the last
@@ -28,13 +29,14 @@ Run every `graphify` command from `<repoPath>` (`cd "<repoPath>" && graphify …
      `<repoPath>/.gitignore` (as in setup step 7; no commit) so graph files never reach a commit.
    - `grep -q '\.factory/worktrees/' "<repoPath>/graphify-out/graph.json"` succeeds → the graph indexed worktree
      copies. Tell the user once and log `- <ISO ts> [graph] warning: graph includes .factory/worktrees/`; continue.
-3. **Git hooks.** Check `cd "<repoPath>" && graphify hook status` reports the hooks installed (if this Graphify has
-   no `hook status`: `grep -q graphify "<repoPath>/.git/hooks/post-commit"`, the preflight `graphify.gitHooks` probe).
+3. **Git hooks.** `<hooksDir>` = output of `git -C "<repoPath>" rev-parse --path-format=absolute --git-path hooks`
+   (right for linked worktrees, submodules and `core.hooksPath`). Present = `cd "<repoPath>" && graphify hook status`
+   reports them installed, or `grep -q graphify "<hooksDir>/post-commit"` (not preflight `graphify.gitHooks`).
    - Missing → tell the user one line and run `cd "<repoPath>" && graphify hook install` (setup already had the
      user's consent; SOP 5 re-installs when missing); re-check as above.
-   - `git -C "<repoPath>" config --get core.hooksPath` non-empty → warn once that `.git/hooks` is bypassed, so the
-     graph refreshes only through SOP 5's stale check.
-   - Worktrees share `<repoPath>/.git/hooks`, so commits by builders in `.factory/worktrees/<slug>` (and merges into
+   - Still absent (e.g. husky owns `core.hooksPath`) → warn once that the graph refreshes only through SOP 5's stale
+     check, record hooks `bypassed`, and continue: hooks never stop this stage.
+   - Worktrees share `<hooksDir>`, so commits by builders in `.factory/worktrees/<slug>` (and merges into
      `main`) refresh the graph too; never install hooks per worktree.
 
 **Stopped** (any stop above): `- <ISO ts> [graph] stage stopped — <reason>` via `mcp__trilium__append_to_note` on

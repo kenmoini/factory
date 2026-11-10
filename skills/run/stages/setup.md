@@ -52,15 +52,22 @@ nothing is read from Trilium before step 9.
      /factory:run"; Stop setup.
    - `trilium.mcpEndpoint=false` → "Enable it in Trilium: Options → AI/LLM → MCP server"; AskUserQuestion
      `Retry (enabled) / Stop setup`; re-check.
-4. **Register the Trilium MCP server** (`trilium.mcpRegistered`).
-   - Check: `trilium.mcpRegistered=true`, not stale (step 2), and `claude mcp get trilium 2>&1 | grep -iE '^ *(url|status):'`
-     (never prints the header) shows URL `<triliumUrl>/mcp` and no failed status.
-   - Else tell the user `trilium` → `<triliumUrl>/mcp` (token as Bearer header) goes into your user-scope MCP config;
-     AskUserQuestion `Register / Stop setup`.
-   - Fix: if `trilium.mcpRegistered=true`, first `claude mcp remove trilium -s user`; then
-     `claude mcp add --scope user --transport http trilium "<triliumUrl>/mcp" --header "Authorization: Bearer <etapiToken>"`,
-     writing `<triliumUrl>` as `$(factory-config get triliumUrl)` and `<etapiToken>` as `$(factory-config get etapiToken)`.
-   - Re-check: `claude mcp get trilium >/dev/null 2>&1` exits 0. Remember "registered in this run" (step 8).
+4. **Register the Trilium MCP server.** Decide on this step's own `claude mcp get trilium`, never on
+   `trilium.mcpRegistered` (its 3 s probe can time out and read as unregistered).
+   - Check: `claude mcp get trilium 2>&1 | grep -iE '^ *(scope|url|status):'` (prints only those lines, never the
+     header). OK = exit 0, URL `<triliumUrl>/mcp`, the `Status:` line contains `Connected`, and not stale (step 2):
+     remember "connected" (step 8) and move on.
+   - Else (not registered, other URL, stale, or `Status:` without `Connected`, e.g. a rotated token) → tell the user
+     `trilium` → `<triliumUrl>/mcp` (token as Bearer header) goes into your user-scope MCP config (plus, when its
+     `Scope:` is Project, that the entry is removed from `<repoPath>/.mcp.json`); AskUserQuestion `Register / Stop setup`.
+   - Fix: `[ -n "$(factory-config get etapiToken 2>/dev/null)" ]` fails → Stop setup ("no ETAPI token configured").
+     While `claude mcp get trilium >/dev/null 2>&1` exits 0 (at most 3 rounds): read its `Scope:` line (`User…`,
+     `Local…`, `Project…`) and run `claude mcp remove trilium -s <user|local|project>` for that scope, so no other
+     scope shadows the new entry. Then
+     `claude mcp add --scope user --transport http trilium "<triliumUrl>/mcp" --header "Authorization: Bearer <etapiToken>" >/dev/null 2>&1`,
+     writing `<triliumUrl>` as `$(factory-config get triliumUrl)` and `<etapiToken>` as `$(factory-config get etapiToken)`;
+     decide on its exit code (non-zero → Stop setup).
+   - Re-check: the Check command shows `Scope:` User and URL `<triliumUrl>/mcp`. Remember "registered in this run".
 5. **Tools** (`tools.uv`, `graphify.installed`, `tools.superpowers`, `graphify` in your skills list).
    - Missing items, in install order: uv (`tools.uv=false`): `curl -LsSf https://astral.sh/uv/install.sh | sh` (to
      `~/.local/bin`; PATH rule); Graphify (`graphify.installed=false`): `uv tool install graphifyy` (never `uvx` or
@@ -76,9 +83,11 @@ nothing is read from Trilium before step 9.
      `Initialise git here (git init -b main) / Stop setup`. Fix: `git init -b main`. Re-check: `git.isRepo=true`.
 7. **Working files and graph hooks** (`<repoPath>`).
    - Checks: dirs `<repoPath>/.factory/{worktrees,mockups,tasks,workstreams}`; `<repoPath>/.gitignore` lines
-     `.factory/` and `graphify-out/` (`grep -qxF`); `graphify.gitHooks=true`.
+     `.factory/` and `graphify-out/` (`grep -qxF`); hooks: `<hooksDir>` = output of
+     `git -C "<repoPath>" rev-parse --path-format=absolute --git-path hooks` (right for linked worktrees, submodules
+     and `core.hooksPath`), present = `grep -q graphify "<hooksDir>/post-commit"` (not `graphify.gitHooks`).
    - Missing → tell the user the list (dirs; `.gitignore` lines + the commit below if it applies; Graphify git hooks
-     in `.git/hooks`, which rebuild `graphify-out/` after commits); AskUserQuestion `Apply / Stop setup`.
+     in `<hooksDir>`, which rebuild `graphify-out/` after commits); AskUserQuestion `Apply / Stop setup`.
    - Dirs: `mkdir -p "<repoPath>/.factory/worktrees" "<repoPath>/.factory/mockups" "<repoPath>/.factory/tasks" "<repoPath>/.factory/workstreams"`.
    - `.gitignore`: note whether `git -C "<repoPath>" status --porcelain -- .gitignore` is empty, then
      `f="<repoPath>/.gitignore"; touch "$f"; for e in .factory/ graphify-out/; do grep -qxF "$e" "$f" || { [ -n "$(tail -c1 "$f")" ] && echo >> "$f"; echo "$e" >> "$f"; }; done`.
@@ -86,17 +95,19 @@ nothing is read from Trilium before step 9.
      `git -C "<repoPath>" branch --show-current` is the default branch (`main`, else `master`):
      `git -C "<repoPath>" add .gitignore && git -C "<repoPath>" commit -m "chore: ignore factory working files" -- .gitignore`.
      Otherwise leave it uncommitted; say so in the summary.
-   - Hooks: `cd "<repoPath>" && graphify hook install`; re-check `graphify.gitHooks=true`.
-     `git -C "<repoPath>" config --get core.hooksPath` non-empty → warn: `.git/hooks` is bypassed (SOP 5 refreshes).
+   - Hooks: `cd "<repoPath>" && graphify hook install`; re-check with the same grep. Still absent (e.g. husky owns
+     `core.hooksPath`) → warn once that the graph refreshes only via SOP 5's stale check and continue: hooks never
+     Stop setup.
 8. **MCP gate.** `mcp__trilium__search_notes` must be callable: in your tool list, or loaded with ToolSearch query
    `+trilium` (max_results 20).
    - Registered in this run → the stop below (still-callable tools use the old registration).
    - Callable → step 9.
-   - Not callable, registered before this run (Trilium down, MCP disabled, stale token) → AskUserQuestion
-     `Re-register trilium with the stored URL and token / Stop setup`; Re-register → step 4 fix, then the stop below.
+   - Not callable, step 4 found it "connected" (registered after this session started, or the session lost it) →
+     the stop below, no question.
    - Stop: if `mcp__trilium__*` tools were not available in this session (or `trilium` was registered in this run),
-     tell the user to run `/mcp` → reconnect (or restart Claude Code) and re-run `/factory:run`; stop
-     (`factory-event stage --stage setup --status stopped </dev/null`; the next run re-enters setup).
+     tell the user to run `/mcp` → reconnect (or restart Claude Code; restart if `/mcp` already shows it connected)
+     and re-run `/factory:run`; stop (`factory-event stage --stage setup --status stopped </dev/null`; the next run
+     re-enters setup).
 9. **Trilium notes** (`$PLUGIN_ROOT/skills/run/references/trilium-schema.md`: Hierarchy, Titles, find or create).
    A reused note keeps its content and gets its labels re-set; `Factory Log` is append-only (never `set_note_content`).
    - Root: `mcp__trilium__search_notes("#factoryRoot")`: one hit → `<rootId>`; several → AskUserQuestion, one option
