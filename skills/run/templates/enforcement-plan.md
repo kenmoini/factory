@@ -1,7 +1,7 @@
 # Enforcement Plan
 <!-- factoryDoc: enforcement-plan -->
 
-**Project:** {{repo}} · **Standards approved:** {{standards_approved_at}} · **Status:** {{approval}}
+**Project:** {{repo_name}} · **Standards approved:** {{standards_approved_at}} · **Status:** {{approval}}
 
 ## Summary
 {{summary}}

@@ -4,6 +4,15 @@ Single source of truth for every Trilium note, title, label and search the facto
 `sop.md`, `agent-protocol.md`, `execute-loop.md` and agent files may only use labels declared in the
 **Labels** table below. Read this file before any Trilium write.
 
+## Placeholders
+
+- `<repoName>`: basename of the repo root. Title of the project note and value of `#repo` and `#project`.
+- `<repoPath>`: absolute path of the repo root. Value of `#repoPath`; the directory passed to `--repo`, `git -C`,
+  `factory-merge` and every `.factory/` path (`<repoPath>/.factory/…`). Never use one where the other is meant.
+- `<slug>` workstream slug; `<T-NNN>` task id; `<noteId>` Trilium note id; `<ISO ts>` see Timestamps below.
+- Template placeholders `{{snake_case}}` take plain text. `{{…_json}}` placeholders take a pre-escaped JSON literal
+  (serialise the value: text becomes a quoted, escaped JSON string; lists become arrays); never paste raw text there.
+
 ## Rules
 
 - **Only the orchestrator touches Trilium.** Agents never get `mcp__trilium__*` tools; they read file exports.
@@ -17,32 +26,37 @@ Single source of truth for every Trilium note, title, label and search the facto
   (`#factoryRoot`, `#factoryProject`, `#factoryWorkstream`, `#factoryMilestone`, `#factoryTask`,
   `#factoryReview`, `#factoryValidation`, `#factoryAgentRun`) have an empty value. Remove a label with
   `mcp__trilium__delete_attribute`. Relations are not used.
-- **Denormalised labels**: every note below a project carries `#project=<repo>`; every note below a
+- **Denormalised labels**: every note below a project carries `#project=<repoName>`; every note below a
   workstream also carries `#workstream=<slug>`; every note below a task (and the task) carries
   `#taskId=<T-NNN>`. Searches never depend on ancestors.
 - **Find or create**: before creating a child, `mcp__trilium__get_child_notes(<parent>)` and match the exact
-  title; reuse the note if present (overwrite content, re-set labels). Containers (`Agent Runs`,
+  title; reuse the note if present (overwrite content, re-set labels), except `Human Decision`, which is
+  append-only once created (`append_to_note`, never `set_note_content`). Containers (`Agent Runs`,
   `Workstreams`, `Milestones`, `Validation`) are plain text notes found the same way; they carry only
   `#project` (and `#workstream` for `Milestones`, `Validation`).
 - **Templates**: document bodies come from `$PLUGIN_ROOT/skills/run/templates/<name>.md`: Read, fill every
-  `{{placeholder}}` (write `n/a` when not applicable), keep lines 1–2, create the note.
+  `{{placeholder}}` (write `n/a` when not applicable), keep lines 1–2, create the note. Line 2
+  (`<!-- factoryDoc: <kind> -->`) is a template marker, not a label instruction: the note's labels come from this
+  schema. For most templates the kind equals the note's `#factoryDoc` value; the exceptions are marker-labelled
+  notes that never carry `#factoryDoc`: `review` (Review notes carry `#factoryReview`), `validation` (Round
+  notes carry `#factoryValidation`), and `task-spec` when used for the task note body (`#factoryTask`).
 - **Exports for agents**: the orchestrator copies note content to files that agents read:
   `.factory/workstreams/<slug>/docs/<kind>.md` (`goal`, `examination`, `standards`, `overview`, `spec`,
   `plan`, `uiux`, `api-design`) via `mcp__trilium__get_note_content` + Write. Re-export after every change.
 - **Ids cached** in `.factory/config.json`: `projectNoteId`, `workstreams.<slug>.noteId` (via `factory-config
-  set <key> <value> --repo <repo>`). Everything else is found by title under a cached id or by search.
+  set <key> <value> --repo <repoPath>`). Everything else is found by title under a cached id or by search.
 - **Timestamps** are UTC ISO-8601 `YYYY-MM-DDTHH:MM:SSZ` (`date -u +%Y-%m-%dT%H:%M:%SZ`); shas are full 40-hex;
   numbers are plain decimal strings.
 - **Stage state is always `mcp__trilium__get_attributes(<noteId>)`**, never a search.
 
 ## Hierarchy
 
-`<repo>` is the basename of the repo root (also `#repo` and `#project`). Titles are exact.
+`<repoName>` / `<repoPath>`: see Placeholders. Titles are exact.
 
 ```
 root
 └─ ClaudeProjects                      #factoryRoot
-   └─ <repo>                           #factoryProject #repo #repoPath=<abs> #projectKind=greenfield|brownfield
+   └─ <repoName>                       #factoryProject #repo #repoPath #projectKind=greenfield|brownfield
       │                                #stageSetup #stageExamine #stageStandards #stageEnforce #stageGraph
       │                                #activeWorkstream #dashboardPort
       ├─ Factory Log                   #factoryDoc=log  (append_to_note, one line per event)
@@ -72,12 +86,14 @@ root
                      ├─ Build Report   #factoryDoc=build-report  (one section appended per round)
                      ├─ Review R<n> <reviewer>   #factoryReview #round #reviewer #verdict=PASS|CHANGES
                      ├─ Approval R<n>  #factoryDoc=approval #round #verdict=APPROVE|ESCALATE
-                     ├─ Human Decision #factoryDoc=human-decision #verdict=approve|reject
+                     ├─ Human Decision #factoryDoc=human-decision #verdict=approve|reject #round  (append-only)
                      └─ <ISO ts> <agentType> <agentId>   #factoryAgentRun (builder/reviewer/approver/spec-writer runs)
 ```
 
-The task note's own body is the plan-level task description (template `task-spec`, sections `Goal`,
-`Acceptance criteria`, `Files`, `Out of scope`); the child `Task Spec` holds the spec-writer's full spec.
+The task note's own body and the child `Task Spec` both use template `task-spec`. For the task note body the
+planner fills `Goal`, `Acceptance criteria`, `Files`, `Out of scope` and leaves the `Interfaces` and `Steps`
+placeholders untouched (the one exception to "fill every placeholder"); the task note carries `#factoryTask`, never
+`#factoryDoc`. The spec-writer's completed spec (all six sections) becomes the child `Task Spec` (`#factoryDoc=task-spec`).
 
 ## Labels
 
@@ -85,8 +101,8 @@ The task note's own body is the plan-level task description (template `task-spec
 |---|---|---|
 | `#factoryRoot` | `ClaudeProjects` | marker |
 | `#factoryProject` | project note | marker |
-| `#repo` | project | repo basename |
-| `#repoPath` | project | absolute repo root path |
+| `#repo` | project | `<repoName>` |
+| `#repoPath` | project | `<repoPath>` (absolute) |
 | `#projectKind` | project | `greenfield` \| `brownfield` |
 | `#stageSetup` | project | `done` |
 | `#stageExamine` | project | `done` |
@@ -114,7 +130,7 @@ The task note's own body is the plan-level task description (template `task-spec
 | `#factoryWorkstream` | workstream note | marker |
 | `#slug` | workstream | slug, `^[a-z0-9][a-z0-9-]{0,62}$`, no trailing `-` |
 | `#branch` | workstream | branch name (= slug) |
-| `#worktree` | workstream | absolute path `<repo>/.factory/worktrees/<slug>` |
+| `#worktree` | workstream | absolute path `<repoPath>/.factory/worktrees/<slug>` |
 | `#wsStatus` | workstream | `brainstorm` \| `design` \| `planned` \| `validated` \| `executing` \| `paused` \| `done` |
 | `#stageBrainstorm` | workstream | `done` |
 | `#stageUiux` | workstream | `done` \| `skipped` |
@@ -127,7 +143,7 @@ The task note's own body is the plan-level task description (template `task-spec
 | `#apiDocPath` | API Design | repo-relative path of the API doc (e.g. `docs/openapi.yaml`) |
 | `#factoryValidation` | Validation `Round <N>` | marker |
 | `#lens` | lens child of a round | `feasibility` \| `missing-requirements` \| `security` \| `ux` \| `sequencing` \| `standards` |
-| `#round` | task; Review; Approval; Validation round; lens child | integer; task starts `0`, review rounds start `1` |
+| `#round` | task; Review; Approval; Validation round; lens child; Human Decision | integer; task starts `0`, review rounds start `1`, never reset; on Human Decision: the task's `#round` at the latest decision |
 | `#verdict` | Validation round | `pass` \| `fail` |
 | `#verdict` | lens child | `PASS` \| `FAIL` |
 | `#verdict` | Review | `PASS` \| `CHANGES` |
@@ -142,10 +158,10 @@ The task note's own body is the plan-level task description (template `task-spec
 | `#head` | task | sha of the worktree HEAD at the latest review |
 | `#mergedSha` | task | sha of the `--no-ff` merge commit on `main` |
 | `#builderAgentId` | task | agent id of the builder (target of `SendMessage` fix rounds) |
-| `#escalation` | task | `fix-cap` \| `approver` \| `builder-blocked` \| `merge-conflict` \| `reviewer-failed`; deleted when the task leaves `needs-human`/`blocked` |
+| `#escalation` | task | `fix-cap` \| `approver` \| `builder-blocked` \| `spec-failed` \| `merge-conflict` \| `reviewer-failed`; deleted when the task leaves `needs-human`/`blocked` |
 | `#factoryReview` | Review note | marker |
 | `#reviewer` | Review | `security` \| `ux` \| `ui-design` \| `code` |
-| `#project` | every note below a project | repo basename |
+| `#project` | every note below a project | `<repoName>` (never the path) |
 | `#workstream` | every note below a workstream | slug |
 
 ## Titles
@@ -153,7 +169,7 @@ The task note's own body is the plan-level task description (template `task-spec
 | Note | Title | Parent |
 |---|---|---|
 | root container | `ClaudeProjects` | `root` |
-| project | `<repo>` | `ClaudeProjects` |
+| project | `<repoName>` | `ClaudeProjects` |
 | log / docs | `Factory Log`, `Goal`, `Codebase Examination`, `Standards`, `Enforcement Plan` | project |
 | containers | `Agent Runs`, `Workstreams` | project |
 | workstream | `<slug>` | `Workstreams` |
@@ -187,14 +203,14 @@ agents to cards through it and through `#agentId`.
 ## Canonical searches
 
 `mcp__trilium__search_notes` queries. Quote values that contain `-`, `/`, `.` or spaces. Except the first two,
-every query also carries `#project='<repo>'`, placed before any `orderBy`/`limit` (slugs and task ids are only
+every query also carries `#project='<repoName>'`, placed before any `orderBy`/`limit` (slugs and task ids are only
 unique per project / workstream). If `search_notes` ignores `orderBy`/`limit`, sort and cut client-side; always re-sort `#order`
 numerically.
 
 | Purpose | Query |
 |---|---|
 | root | `#factoryRoot` |
-| project | `#factoryProject #repoPath='<abs>'` |
+| project | `#factoryProject #repoPath='<repoPath>'` |
 | workstream (cache miss) | `#factoryWorkstream #slug='<slug>'` |
 | next task (candidates) | `#factoryTask #workstream='<slug>' #status=todo orderBy #order asc` — take the first whose `#dependsOn` are all done; `limit 1` only when no deps exist |
 | done task ids | `#factoryTask #workstream='<slug>' #status=done` |

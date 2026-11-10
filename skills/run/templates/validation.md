@@ -1,5 +1,6 @@
 # Validation Round {{round}} — {{slug}}
 <!-- factoryDoc: validation -->
+<!-- marker-labelled note: Round notes carry #factoryValidation, never #factoryDoc -->
 
 **Workstream:** {{slug}} · **Plan rev:** {{plan_rev}} · **Verdict:** {{verdict}} · **Validated:** {{validated_at}}
 

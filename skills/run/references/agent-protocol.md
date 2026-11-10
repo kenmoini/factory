@@ -13,9 +13,9 @@ parsed. Agent files (`agents/*.md`) copy their contract and the graphify paragra
 - Around every dispatch: Agent Run note before, rename/labels after (convention in `trilium-schema.md`).
 - Follow-ups go to the same agent with `SendMessage(to: <agentId>, message: …)`; the message starts with
   `[task:<noteId>]` and ends with `Return the same contract.`
-- Path shorthands below are expanded to absolute paths in the brief: `<repo>` repo root;
-  `<wt>` = `<repo>/.factory/worktrees/<slug>`; `<docs>` = `<repo>/.factory/workstreams/<slug>/docs`;
-  `<taskDir>` = `<repo>/.factory/tasks/<slug>/<taskId>`; `$PLUGIN_ROOT` = the plugin root given in SKILL.md.
+- Path shorthands below are expanded to absolute paths in the brief: `<repoPath>` absolute repo root;
+  `<wt>` = `<repoPath>/.factory/worktrees/<slug>`; `<docs>` = `<repoPath>/.factory/workstreams/<slug>/docs`;
+  `<taskDir>` = `<repoPath>/.factory/tasks/<slug>/<taskId>`; `$PLUGIN_ROOT` = the plugin root given in SKILL.md.
 
 ## Brief format (exact)
 
@@ -40,12 +40,12 @@ Return: ≤15 lines then exactly one fenced json block matching your contract
 | `builder` | `<taskDir>/spec.md` | `worktree=<wt>`, `branch=<slug>`, `report=<taskDir>/report.md`, `` lint=`<lintCmd>` ``, `` test=`<testCmd>` ``, `` build=`<buildCmd>` ``, `findings=<taskDir>/findings-R<n>.md` (fix only) | `<wt>/**`, `<taskDir>/report.md` |
 | `security-reviewer` | `<taskDir>/review-R<n>.diff` | `spec=<taskDir>/spec.md`, `report=<taskDir>/report.md`, `worktree=<wt>`, `round=<n>`, `open=<taskDir>/open-findings-R<n-1>.json` (round > 1) | none |
 | `ux-reviewer` | same | same + `uiux=<docs>/uiux.md` | none |
-| `ui-design-reviewer` | same | same + `uiux=<docs>/uiux.md`, `mockups=<repo>/.factory/mockups/<slug>/` | none |
+| `ui-design-reviewer` | same | same + `uiux=<docs>/uiux.md`, `mockups=<repoPath>/.factory/mockups/<slug>/` | none |
 | `code-reviewer` | same | same + `standards=<docs>/standards.md`, `plan=<docs>/plan.md` | none |
 | `approver` | `<taskDir>/spec.md` | `report=<taskDir>/report.md`, `package=<taskDir>/approval.diff`, `reviews=<taskDir>/reviews-R<n>.json`, `standards=<docs>/standards.md` | none |
-| `codebase-examiner` | `<repo>/graphify-out/GRAPH_REPORT.md` (or `<repo>` when absent) | `repo=<repo>` | `<repo>/.factory/examine/**` |
-| `standards-researcher` | `<repo>/.factory/research/questions.md` | `examination=<repo>/.factory/examine/report.md` (brownfield) or `answers=<repo>/.factory/research/answers.md` (greenfield) | `<repo>/.factory/research/**` |
-| `plan-adversary` | `<repo>/.factory/workstreams/<slug>/tasks.md` | `lens=<lens>`, `docs=<docs>/`, `graph=<repo>/graphify-out/GRAPH_REPORT.md` | none |
+| `codebase-examiner` | `<repoPath>/graphify-out/GRAPH_REPORT.md` (or `<repoPath>` when absent) | `repo=<repoPath>` | `<repoPath>/.factory/examine/**` |
+| `standards-researcher` | `<repoPath>/.factory/research/questions.md` | `examination=<repoPath>/.factory/examine/report.md` (brownfield) or `answers=<repoPath>/.factory/research/answers.md` (greenfield) | `<repoPath>/.factory/research/**` |
+| `plan-adversary` | `<repoPath>/.factory/workstreams/<slug>/tasks.md` | `lens=<lens>`, `docs=<docs>/`, `graph=<repoPath>/graphify-out/GRAPH_REPORT.md` | none |
 
 Example (builder):
 
@@ -151,8 +151,9 @@ human must decide.
   messages. Nobody checks out, merges into, rebases, resets or pushes `main`; no `git push`, no `--force`, no `git clean`.
 - Bash for read-only agents means commands that change no file, no git state, no packages and no network
   (`git log|diff|show|status`, `ls`, `cat`, `graphify query|explain|path`).
-- No new dependencies unless the spec names them; no global installs; no network except WebSearch/WebFetch
-  for the standards-researcher.
+- Dependencies: only the builder may add or install dependencies, and only those the task spec or Standards name,
+  with the project's package manager inside the worktree; no global installs. Network: the builder only for that
+  package-manager install, the standards-researcher only through WebSearch/WebFetch, everyone else none.
 - Secrets: never read or print `~/.config/claude-factory/config.json`, `.env*` values or tokens; redact them in reports.
 - No subagents. Do not claim tests or lint pass without running them; prefer `DONE_WITH_CONCERNS` to hiding a problem.
 - Final message: ≤ 15 lines, then exactly one fenced json block, and nothing after it.

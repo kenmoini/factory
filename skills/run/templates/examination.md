@@ -1,7 +1,7 @@
 # Codebase Examination
 <!-- factoryDoc: examination -->
 
-**Project:** {{repo}} · **Commit:** {{head_sha}} · **Examined:** {{examined_at}} · **Report:** `{{report_path}}`
+**Project:** {{repo_name}} · **Commit:** {{head_sha}} · **Examined:** {{examined_at}} · **Report:** `{{report_path}}`
 
 ## Summary
 {{summary}}

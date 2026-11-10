@@ -12,5 +12,5 @@
 
 ## Result
 ```json
-{"verdict": "{{verdict}}", "reasons": {{reasons_json}}, "risk": "{{risk}}", "merge_notes": "{{merge_notes}}"}
+{"verdict": "{{verdict}}", "reasons": {{reasons_json}}, "risk": "{{risk}}", "merge_notes": {{merge_notes_json}}}
 ```

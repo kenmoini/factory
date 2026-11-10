@@ -1,7 +1,7 @@
 # Standards
 <!-- factoryDoc: standards -->
 
-**Project:** {{repo}} · **Approved:** {{approved_at}} · **Research:** `{{research_report_path}}`
+**Project:** {{repo_name}} · **Approved:** {{approved_at}} · **Research:** `{{research_report_path}}`
 
 ## Machine commands
 The labels on this note are authoritative; this table mirrors them.

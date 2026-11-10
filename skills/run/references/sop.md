@@ -31,9 +31,9 @@ agent dispatch rules in `$PLUGIN_ROOT/skills/run/references/agent-protocol.md`.
 ### 4. Commits and branches
 
 - You commit on `main` only for approved scaffolding (`chore: enforce standards`, after `#approval=approved`).
-- Builders commit only on branch `<slug>` inside `<repo>/.factory/worktrees/<slug>`; the api-design stage commits
+- Builders commit only on branch `<slug>` inside `<repoPath>/.factory/worktrees/<slug>`; the api-design stage commits
   its repo API docs there too (`docs(api): <slug>`). Nobody else commits on `main`.
-- `main` changes only through `factory-merge <repo> <slug> "<message>"` (`git merge --no-ff`); never push, never open a PR.
+- `main` changes only through `factory-merge <repoPath> <slug> "<message>"` (`git merge --no-ff`); never push, never open a PR.
 - Never rebase, reset or force anything on `main`; refuse and report if `main` is dirty.
 
 ### 5. Graph first

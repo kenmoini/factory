@@ -1,7 +1,7 @@
 # Goal
 <!-- factoryDoc: goal -->
 
-**Project:** {{repo}} · **Kind:** {{project_kind}} · **Approved:** {{approved_at}}
+**Project:** {{repo_name}} · **Kind:** {{project_kind}} · **Approved:** {{approved_at}}
 
 ## What we are building
 {{what}}

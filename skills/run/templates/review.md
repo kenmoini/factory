@@ -1,5 +1,6 @@
 # Review R{{round}} {{reviewer}} — {{task_id}}
 <!-- factoryDoc: review -->
+<!-- marker-labelled note: carries #factoryReview, never #factoryDoc -->
 
 **Task:** {{task_id}} {{task_title}} · **Round:** {{round}} · **Reviewer:** {{reviewer}} · **Verdict:** {{verdict}} · **Not applicable:** {{not_applicable}}
 **Package:** `{{diff_path}}` ({{diff_range}})
