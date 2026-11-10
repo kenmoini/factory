@@ -34,11 +34,9 @@ const skillFiles = () => skillDirs().map((d) => `skills/${d}/SKILL.md`);
 const agentFiles = () => mdIn("agents");
 const fm = (rel: string) => parseFrontmatter(read(rel));
 const missing = (want: string[], have: string[]) => want.filter((x) => !have.includes(x));
-/** skills/run/ exists from Task 11 (references, templates); the skill rules start once SKILL.md lands (Task 12). */
-const NO_RUN_SKILL = !existsSync(abs("skills/run/SKILL.md"));
 
 // ---------- rule 1: skill frontmatter ----------
-test.skipIf(NO_RUN_SKILL)("skills: SKILL.md exists per dir, name === dir, non-empty description", () => {
+test("skills: SKILL.md exists per dir, name === dir, non-empty description", () => {
   const problems: string[] = [];
   for (const d of skillDirs()) {
     const f = `skills/${d}/SKILL.md`;
@@ -50,7 +48,7 @@ test.skipIf(NO_RUN_SKILL)("skills: SKILL.md exists per dir, name === dir, non-em
   expect(problems, problems.join("\n")).toEqual([]);
 });
 
-test.skipIf(NO_RUN_SKILL)("skills: the set of skill dirs equals the 12 expected", () => {
+test("skills: the set of skill dirs equals the 12 expected", () => {
   const have = skillDirs();
   const msg = `missing: [${missing(SKILLS, have)}] unexpected: [${missing(have, SKILLS)}]`;
   expect([...have].sort(), msg).toEqual([...SKILLS].sort());
@@ -113,7 +111,7 @@ test("paths: $PLUGIN_ROOT/<rel> in skills/run/**/*.md exist", () => {
 });
 
 // ---------- rule 5: run skill references every stage ----------
-test.skipIf(NO_RUN_SKILL)("run: SKILL.md mentions each stages/<s>.md and each exists", () => {
+test("run: SKILL.md mentions each stages/<s>.md and each exists", () => {
   const body = read("skills/run/SKILL.md");
   const problems: string[] = [];
   for (const s of STAGES) {
