@@ -28,7 +28,8 @@ Preflight: !`"${CLAUDE_PLUGIN_ROOT}/bin/factory-preflight" 2>/dev/null || echo '
 Fields: `config.{global,repo}` (global / repo `.factory/config.json` exist);
 `trilium.{ok,version,mcpEndpoint,mcpRegistered,error}` (`ok` = ETAPI answered; `mcpEndpoint` = `<url>/mcp`
 answers; `mcpRegistered` = `claude mcp get trilium` succeeds); `dashboard.{running,port}`;
-`git.{isRepo,root,branch,dirty,hasCommits}` (`root` = `<repo>` below);
+`git.{isRepo,root,branch,dirty,hasCommits}` (`root` = `<repoPath>` below; its basename = `<repoName>`, the project
+note title and `#project` value; never use one for the other);
 `factory.{configured,projectNoteId,activeWorkstream,worktree}`; `graphify.{installed,outPresent,ageMinutes,gitHooks}`;
 `tools.{bun,uv,node,superpowers}`. A bare `{"error":…}` means the probe could not run. It is a snapshot taken at
 load: after setup, an install or a config change, run `factory-preflight` again.
@@ -43,7 +44,8 @@ Received: `$ARGUMENTS` → verb `$0`, target `$1`, notes `$2` (shell-split; a qu
 2. verb ∈ {"" (none), `status`, `approve`, `reject`, `setup`, `examine`, `set-standards`, `enforce-standards`,
    `brainstorm`, `uiux`, `api-design`, `plan`, `validate`, `execute`, `graph`}.
 3. target: the task id (`T-001`) for `approve`/`reject`; the workstream slug for `brainstorm` (optional; asked
-   when absent). notes: the reason for `reject`.
+   when absent). notes: the reason for `reject`. `brainstorm` given both a positional slug and `--workstream`: the
+   positional slug wins; ignore `--workstream` with a one-line warning.
 4. Unknown verb, `approve`/`reject` without a task id, `reject` without notes, or a bad slug → print usage, stop:
 
 ```
@@ -61,7 +63,8 @@ when any of these holds:
 
 If setup has just registered the Trilium MCP server (`claude mcp add`), its tools load only after a reconnect:
 tell the user to run `/mcp` and reconnect `trilium` (or restart Claude Code), then re-run
-`/factory:run $ARGUMENTS`, and stop. Otherwise run `factory-preflight` again and continue with the verb.
+`/factory:run $ARGUMENTS`, and stop. Otherwise run `factory-preflight` again and continue with the verb, unless
+the verb is `setup`: then stop (it has just run).
 
 ## Dashboard
 
@@ -72,10 +75,13 @@ tell the user to run `/mcp` and reconnect `trilium` (or restart Claude Code), th
 
 ## Stage state and prerequisites
 
+First Read `$PLUGIN_ROOT/skills/run/references/sop.md` and `$PLUGIN_ROOT/skills/run/references/trilium-schema.md`
+(once per invocation, again after any compaction); every verb below relies on them.
+
 State comes only from `mcp__trilium__get_attributes` on the project note (`factory.projectNoteId`) and on the
 workstream note, never from note bodies or searches. Workstream note id: `factory-config get
-workstreams.<slug>.noteId --repo <repo>`; on a miss use the schema's workstream search and cache the id with
-`factory-config set workstreams.<slug>.noteId <id> --repo <repo>`.
+workstreams.<slug>.noteId --repo <repoPath>`; on a miss use the schema's workstream search and cache the id with
+`factory-config set workstreams.<slug>.noteId <id> --repo <repoPath>`.
 
 | # | Stage | Requires | Done when |
 |---|---|---|---|
@@ -94,8 +100,10 @@ workstreams.<slug>.noteId --repo <repo>`; on a miss use the schema's workstream 
 Rows 0–3 and graph are project labels; rows 4–9 live on the workstream note.
 
 - **Direct stage command** (`/factory:run <stage>` or `/factory:<stage>`): if Requires is unmet, refuse with the
-  exact missing label and the note it belongs on, e.g. `Missing #stageStandards=done on project <repo>: run
-  /factory:set-standards first.`, and stop. A stage already done may run again; its stage file handles redo/realign.
+  exact missing label and the note it belongs on, e.g. `Missing #stageStandards=done on project <repoName>: run
+  /factory:set-standards first.`, and stop. `uiux`, `api-design`, `plan`, `validate`, `execute` with no `--workstream`
+  and no `factory.activeWorkstream` → refuse `No active workstream: run /factory:brainstorm first.` and stop. A stage
+  already done may run again; its stage file handles redo/realign.
 - **No verb**: run the first stage in # order that is not done, then the next, and so on, pausing only at human
   gates (SOP 6). Workstream stages need a workstream: none active → brainstorm. When every stage of the active
   workstream is done, say so and AskUserQuestion `Brainstorm a new workstream / Stop`.
@@ -105,9 +113,8 @@ Rows 0–3 and graph are project labels; rows 4–9 live on the workstream note.
 ## Dispatch
 
 Same path for every stage, however invoked (no verb, stage verb, `/factory:<stage>` alias):
-1. Always Read `$PLUGIN_ROOT/skills/run/references/sop.md` first (before the first stage of this invocation and
-   again after any compaction).
-2. Read `$PLUGIN_ROOT/skills/run/references/trilium-schema.md` before any Trilium write.
+1. `sop.md` first: already read above (read it now if you came straight from Ensure setup); re-read after compaction.
+2. `trilium-schema.md`, needed before any Trilium write: already read above; re-read after compaction.
 3. Read `$PLUGIN_ROOT/skills/run/stages/<stage>.md` and follow it step by step, reading the references and
    templates (`$PLUGIN_ROOT/skills/run/templates/`) it names when it names them. Every Agent dispatch follows
    `$PLUGIN_ROOT/skills/run/references/agent-protocol.md`.
@@ -123,22 +130,25 @@ Read-only: no stage runs, no Trilium writes. Use `get_attributes` and the schema
 2. **Active workstream**: slug, `#wsStatus`, `#planRev` / `#validatedPlanRev`, worktree path; other workstreams
    with their `#wsStatus`.
 3. **Tasks by status**: count per task `#status`, and the in-flight task with its phase from `.factory/state.json`.
-4. **Needs human**: every `needs-human` / `blocked` task with its `#escalation` and the command that resolves it
-   (`/factory:run approve <T>` or `/factory:run reject <T> "notes"`).
+4. **Needs human**: every `needs-human` task with its `#escalation` and `/factory:run approve <T>` (not for
+   `spec-failed`) or `/factory:run reject <T> "notes"`; every `blocked` task (merge-conflict sub-flow) with
+   `/factory:run execute` to resume it.
 
 Then run `factory-dashboard open`.
 
 ## approve / reject
 
-These resolve a `needs-human` task. Dispatch as for `execute` (sop.md, trilium-schema.md,
-`$PLUGIN_ROOT/skills/run/stages/execute.md`) and follow its **Human approve** section (`approve <T>`) or
-**Human reject** section (`reject <T> "notes"`); it hands back to the execute loop (MERGE or FIX), which
-continues. Only the user issues these verbs; never approve or reject a task on your own.
+These resolve a `needs-human` task. They skip the prerequisite table: a realign that bumped `#planRev` must not
+block resolving a parked task. With sop.md and the schema read, Read `$PLUGIN_ROOT/skills/run/stages/execute.md`,
+resolve `<slug>` and `<ws>` as in its Preconditions step 0 (no other precondition), then run only its
+**Human approve** section (`approve <T>`) or **Human reject** section (`reject <T> "notes"`). It hands over to
+the execute loop (MERGE, SPEC or FIX); follow it until the loop stops, then stop: never continue to the next
+stage. Only the user issues these verbs; never approve or reject a task on your own.
 
 ## Working files
 
-`<repo>/.factory/` (gitignored, like `graphify-out/`):
-- `config.json`: `projectNoteId`, `activeWorkstream`, `workstreams.<slug>.noteId` (`factory-config get|set … --repo <repo>`).
+`<repoPath>/.factory/` (gitignored, like `graphify-out/`):
+- `config.json`: `projectNoteId`, `activeWorkstream`, `workstreams.<slug>.noteId` (`factory-config get|set … --repo <repoPath>`).
 - `state.json`: execute ledger; Trilium wins when they disagree.
 - `workstreams/<slug>/docs/*.md`: Markdown exports of Trilium documents for agents.
 - `tasks/<slug>/<taskId>/`: brief, spec, report, review packages and results of one task.
