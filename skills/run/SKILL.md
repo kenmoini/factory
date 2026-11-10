@@ -142,7 +142,7 @@ Then run `factory-dashboard open`.
 These resolve a `needs-human` task. They skip the prerequisite table: a realign that bumped `#planRev` must not
 block resolving a parked task. With sop.md and the schema read, Read `$PLUGIN_ROOT/skills/run/stages/execute.md`,
 resolve `<slug>`/`<ws>` as execute-loop.md § Preconditions step 0 (execute.md § Prerequisites points there; no
-other precondition), then run only its **Human approve** section (`approve <T>`) or **Human reject** section
+other precondition), then run only execute.md's **Human approve** section (`approve <T>`) or **Human reject** section
 (`reject <T> "notes"`). It hands over to the execute loop (MERGE, SPEC or FIX); follow it until the loop stops,
 then stop: never continue to the next stage. Only the user issues these verbs; never approve or reject a task on
 your own.

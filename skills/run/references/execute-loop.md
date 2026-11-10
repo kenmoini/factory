@@ -5,11 +5,11 @@ The state machine run by the `execute` stage, one task at a time. Labels, titles
 
 ## Notation
 
-- `<repoPath>` absolute repo root (directories, `--repo`, `git -C`); `<repoName>` its basename (the `#project` value,
-  never a path); `<slug>` workstream; `<wt>` = `<repoPath>/.factory/worktrees/<slug>`;
-  `<docs>` = `<repoPath>/.factory/workstreams/<slug>/docs`; `<T>` task id (`T-001`); `<title>` task title; `<tn>` task
-  note id; `<ws>` workstream note id; `<log>` Factory Log note id; `<ts>` ISO ts;
-  `<taskDir>` = `<repoPath>/.factory/tasks/<slug>/<T>`; `<n>` review round; `state.<key>` a ledger field.
+- `<repoPath>` absolute repo root; `<repoName>` its basename (`#project` value; schema Placeholders); `<slug>`
+  workstream; `<wt>` = `<repoPath>/.factory/worktrees/<slug>`; `<docs>` = `<repoPath>/.factory/workstreams/<slug>/docs`;
+  `<T>` task id (`T-001`); `<title>` task title; `<tn>` task note id; `<ws>` workstream note id; `<log>` Factory Log
+  note id; `<ts>` ISO ts; `<taskDir>` = `<repoPath>/.factory/tasks/<slug>/<T>`; `<n>` review round; `state.<key>` a
+  ledger field.
 - Trilium tool names below omit the `mcp__trilium__` prefix. `set_attribute(<note>, a=x, b=y)` = one call per label. Every search also carries `#project='<repoName>'` (before any
   `orderBy`/`limit`). `<#base>`, `<#lintCmd>`, … = the current value of that label on the note it lives on (schema).
 - bin commands are on the Bash PATH (else `$PLUGIN_ROOT/bin/<name>`). Each prints one JSON line.
@@ -23,8 +23,8 @@ The state machine run by the `execute` stage, one task at a time. Labels, titles
   - **log(msg)**: `append_to_note(<log>, "- <ts> [execute] <T> <msg>")`.
   - **doc(title, template, labels)**: find-or-create `<title>` under `<tn>` (`create_note` type `text` /
     `set_note_content`), body from `$PLUGIN_ROOT/skills/run/templates/<template>.md`, then `set_attribute` the labels
-    plus `#project=<repoName>`, `#workstream=<slug>`, `#taskId=<T>`. Exception: an existing `Human Decision` is never
-    overwritten; only `append_to_note` a new section, then re-set its labels.
+    plus `#project=<repoName>`, `#workstream=<slug>`, `#taskId=<T>`. Exception: an existing `Human Decision` is
+    append-only: `append_to_note` a new section, then re-set its labels.
 
 ## Preconditions
 
@@ -39,8 +39,9 @@ The state machine run by the `execute` stage, one task at a time. Labels, titles
 3. `git -C <repoPath> rev-parse --abbrev-ref HEAD` is `main` and `git -C <repoPath> status --porcelain` is empty; else
    stop and tell the user (never stash or reset for them).
 4. `get_attributes(<Standards>)` → `#lintCmd`, `#testCmd`, `#buildCmd` (empty = none).
-5. Re-export `goal`, `standards`, `spec`, `plan`, `uiux`, `api-design` to `<docs>/` (skip absent docs).
-6. `factory-event stage --stage execute --status started --workstream <slug> </dev/null`; read the ledger.
+5. Refresh `<repoPath>/.factory/docs/{goal,standards}.md` from Trilium, then copy them into `<docs>/`; re-export `spec`,
+   `plan`, `uiux`, `api-design` to `<docs>/` (skip absent docs).
+6. The stage `started` event is sent by SKILL.md; read the ledger.
 
 ## Ledger `.factory/state.json`
 
@@ -53,12 +54,14 @@ The state machine run by the `execute` stage, one task at a time. Labels, titles
   `#head`, `#builderAgentId`. `prevHead` is ledger-only: the head the previous review saw, start of the next scoped
   diff (`""` = none; if lost, use `#base`).
 - Trilium wins: on start or after compaction, if the ledger disagrees with the task labels, rebuild it from them:
-  labels override only label-backed fields; ledger-only fields (`prevHead`, `agents`) are kept when they exist.
+  labels override only label-backed fields; ledger-only fields (`prevHead`, `agents` other than `builder`) are kept;
+  `agents.builder` is rebuilt from `#builderAgentId`.
 
-| task `#status` | resume at |
+| task `#status` | resume at (first matching row) |
 |---|---|
+| `building`/`fixing`, ledger `phase: "REVIEW"` and `round` = `#round` (bump window: REVIEW step 1 stopped after the bump) | status(reviewing), then REVIEW resume branch of step 1; never BUILD/FIX at that round |
 | `spec` | SPEC step 1 |
-| `building` | keep `#base`. `state.agents.builder` set → `SendMessage(to: <state.agents.builder>, "[task:<tn>] Continue from your report <taskDir>/report.md and finish the task. Return the same contract.")`, then BUILD step 5. No id or SendMessage error → fresh builder: BUILD step 3 prompt with `Task: Continue <T> <title> from your report <taskDir>/report.md [task:<tn>]` (step 2 first if `report.md` is missing), then steps 4–5 |
+| `building` | keep `#base`. `state.agents.builder` set → `SendMessage(to: <state.agents.builder>, "[task:<tn>] Continue from your report <taskDir>/report.md and finish the task. Return the same contract.")`, then BUILD step 5. No id or SendMessage error → fresh builder: BUILD step 3 prompt, `Task: Continue <T> <title> from your report <taskDir>/report.md [task:<tn>]` (step 2 first if `report.md` is missing), then steps 4–5 |
 | `reviewing` | REVIEW, resume branch of step 1 |
 | `fixing` | FIX, same `#round` |
 | `approving` | APPROVE |
@@ -80,7 +83,7 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
 | SELECT | in-flight task, else next ready `todo` | `#wsStatus=executing` | SPEC; none → FINISH; paused → ask |
 | SPEC | `brief.md`; spec-writer | `#status=spec`; `Task Spec` | BUILD; BLOCKED twice → NEEDS-HUMAN(spec-failed) |
 | BUILD | `#base`; builder | `#status=building #round=0 #builderAgentId` | REVIEW; BLOCKED / no commit → NEEDS-HUMAN(builder-blocked) |
-| REVIEW | round + 1; package; four reviewers in one message | `#round #head`, then `#status=reviewing`; Review notes | APPROVE, FIX or NEEDS-HUMAN(fix-cap, reviewer-failed): steps 4–5 |
+| REVIEW | round + 1; package; four reviewers | `#round #head`, then `#status=reviewing`; Review notes | APPROVE, FIX or NEEDS-HUMAN(fix-cap, reviewer-failed): steps 4–5 |
 | FIX | findings → builder | `#status=fixing`; Build Report | REVIEW (scoped); BLOCKED / no commit → NEEDS-HUMAN(builder-blocked) |
 | APPROVE | full package; approver | `#status=approving`; Approval | MERGE; ESCALATE → NEEDS-HUMAN(approver) |
 | MERGE | `factory-merge`; smoke | `#status=merging` | DONE (smoke fail: + `#wsStatus=paused`, stop); conflict → sub-flow (`blocked`) |
@@ -99,7 +102,7 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
    `search_notes("#factoryTask #workstream='<slug>' #status=todo orderBy #order asc")`, sort by numeric `#order`, pick
    the first whose `#dependsOn` ids are all done.
 5. No todo task: if `search_notes("#factoryTask #workstream='<slug>'")` returns no task at all → stop and report "no tasks
-   for <slug> in <repoName>" (wrong scope or no plan; never FINISH on an empty result); else → FINISH.
+   for <slug> in <repoName>" (never FINISH on an empty result); else → FINISH.
    Todo tasks but none ready → log `waiting on deps`, report the unmet ids, stop.
 6. `set_attribute(<ws>, wsStatus=executing)`. Milestone: `search_notes("#factoryMilestone #workstream='<slug>' #milestoneId='<M>'")`;
    if its `#status=todo` → `set_attribute(<milestone>, status=active)`.
@@ -129,7 +132,7 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
 
 1. head → `set_attribute(<tn>, base=<head>, round=0)`; status(building).
 2. Write `<taskDir>/report.md` from `$PLUGIN_ROOT/skills/run/templates/build-report.md` (header filled; the builder
-   appends one `## Round <n>` section per round in the shape shown there).
+   appends one `## Round <n>` section per round).
 3. run-start(builder); Agent `factory:builder`, description `builder <T> [task:<tn>]`, prompt:
    ```
    Task: Implement <T> <title> in the worktree [task:<tn>]
@@ -146,9 +149,9 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
 
 ## REVIEW
 
-1. `n = #round + 1`; `state.prevHead` = `""` from BUILD, `<#head>` from FIX; write the ledger (`round: n`, `prevHead`);
-   then head → `set_attribute(<tn>, round=<n>, head=<head>)`; then status(reviewing). This order never loses the old
-   `#head` once `#round` is bumped.
+1. `n = #round + 1`; `state.prevHead` = `""` from BUILD, `<#head>` from FIX; ledger `phase: "REVIEW"`, `round: n`,
+   `prevHead`; then head → `set_attribute(<tn>, round=<n>, head=<head>)`; then status(reviewing), in this order (resume
+   table: bump window).
    Resume (status already `reviewing`): `n = #round`; keep `#head` and `state.prevHead`; dispatch only the reviewers that
    have no `<taskDir>/review-R<n>-<reviewer>.json` yet.
 2. Diff: on resume reuse `<taskDir>/review-R<n>.diff` if it exists. Otherwise
@@ -170,7 +173,6 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
    respawned once alone; fails again → NEEDS-HUMAN(`reviewer-failed`).
 5. log `R<n> security=… ux=… ui-design=… code=…`. `h` = `#round` of the task's `Human Decision` when its `#verdict=reject`,
    else 0. All PASS → APPROVE; any CHANGES and `n − h ≤ 2` → FIX; any CHANGES and `n − h ≥ 3` → NEEDS-HUMAN(`fix-cap`).
-   Minor findings never cause CHANGES.
 
 ## FIX
 
@@ -193,7 +195,7 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
 
 1. status(approving).
 2. `factory-review-package <wt> <#base> <#head> --out <taskDir>/approval.diff` (full package).
-3. Write `<taskDir>/reviews-R<n>.json` = array of the four `review-R<n>-<reviewer>.json` of the final round.
+3. Write `<taskDir>/reviews-R<n>.json` = array of the four `review-R<n>-<reviewer>.json`.
 4. run-start(approver); Agent `factory:approver`, description `approver <T> R<n> [task:<tn>]`, prompt:
    ```
    Task: Approve or escalate <T> <title> for merge [task:<tn>]
@@ -225,7 +227,7 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
       <taskDir>/conflict-<k>.txt. In <wt>: rebase <slug> onto main, resolve, rerun lint and test, append a 'Merge conflict
       <k>' section to <taskDir>/report.md. Return the same contract.")`. SendMessage error → fresh `factory:builder` with the
       BUILD prompt, `Task: Resolve merge conflict <k> of <T> <title> [task:<tn>]`, `conflicts=<taskDir>/conflict-<k>.txt`
-      in Inputs; `set_attribute(<tn>, builderAgentId=<new id>)`.
+      in Inputs; `set_attribute(<tn>, builderAgentId=<new id>)`; ledger.
    3. run-end. `DONE` | `DONE_WITH_CONCERNS` → if head equals `state.prevHead` treat as BLOCKED ("no new commits"); else
       continue. `BLOCKED` | `NEEDS_CONTEXT` → NEEDS-HUMAN(`merge-conflict`) with the builder's concerns.
    4. `git -C <repoPath> rev-parse main` → `<main>`; head → `set_attribute(<tn>, base=<main>, head=<head>)`;
@@ -252,12 +254,12 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
    8. Resume (`blocked`): `k` = highest existing `conflict-<k>.txt` (no increment). `conflict-<k>-review.json` PASS, or
       `conflict-<k>-r2-review.json` PASS → step 6. Review CHANGES and r2 CHANGES → NEEDS-HUMAN(`merge-conflict`). Review
       CHANGES, no r2 → step 7 (skip its SendMessage when head differs from a non-empty `state.prevHead`). No review: head
-      equals a non-empty `state.prevHead` → step 2 (builder not done); else → step 4. `factory-merge` runs only from step 6.
+      equals a non-empty `state.prevHead` → step 2; else → step 4. `factory-merge` runs only from step 6.
 
 ## DONE
 
 1. `set_attribute(<tn>, mergedSha=<sha>)`; `delete_attribute(<tn>, escalation)` if present. Milestone:
-   `search_notes("#factoryTask #workstream='<slug>' #milestoneId='<M>' #status!=done")` returns no task but `<T>` →
+   `search_notes("#factoryTask #workstream='<slug>' #milestoneId='<M>' #status!=done")` returns no task other than `<T>` →
    `set_attribute(<milestone>, status=done)`, log `<M> done`.
 2. status(done).
 3. Graph: the post-merge git hook refreshes `graphify-out/`; if still older than HEAD (SOP 5) run `graphify update .` in `<repoPath>`.
@@ -276,8 +278,8 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
 
 1. `search_notes("#factoryTask #workstream='<slug>' #taskId='<T>'")`; `get_attributes(<tn>)` must show `#status=needs-human`,
    else refuse. `#escalation=spec-failed` → refuse too (nothing to merge; use reject with notes).
-2. `Human Decision`: create from template `human-decision` if absent (`#factoryDoc=human-decision`, `#project`, `#workstream`,
-   `#taskId`); if it exists, `append_to_note` a new dated section only. Then `set_attribute(<decision>, verdict=approve, round=<#round>)`.
+2. doc(`Human Decision`, human-decision, `#factoryDoc=human-decision`), append-only per doc(); then
+   `set_attribute(<decision>, verdict=approve, round=<#round>)`.
 3. `delete_attribute(<tn>, escalation)`; `set_attribute(<ws>, wsStatus=executing)`; log `human approve`; ledger phase MERGE → MERGE.
 
 ## Human reject (`run reject <T> "notes"`)
@@ -305,6 +307,6 @@ SPEC `brief.md`, `spec.md`; BUILD `report.md`; REVIEW `review-R<n>.diff`, `revie
 
 ## Loop control
 
-After DONE go to SELECT. Stop on NEEDS-HUMAN, FINISH, any stop condition above, or a user interrupt (status(S) prints
-the status line of each transition). One task at a time; the four reviewers are the only parallel agents and run
-only while the builder is idle.
+After DONE go to SELECT. Stop on NEEDS-HUMAN, FINISH, any stop condition above, or a user interrupt. Every transition
+that calls status(S) prints the status line; `blocked` and FINISH print their own. One task at a time; the four
+reviewers are the only parallel agents and run only while the builder is idle.

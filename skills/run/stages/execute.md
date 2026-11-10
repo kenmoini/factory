@@ -28,7 +28,7 @@ runs `factory-worktree ensure` and re-sets `#worktree` if `path` differs from it
 `<repoPath>/.factory/state.json` (execute-loop § Ledger): rewrite whole at every transition, before the new phase's
 first action, setting the fields each phase lists. At start and after compaction read it, then `get_attributes(<tn>)`;
 Trilium wins: rebuild from the labels (lost `prevHead` → `#base`), log `ledger resynced from Trilium`, resume per the
-resume table.
+resume table (first matching row: the REVIEW bump window comes first).
 
 ## SELECT
 
@@ -89,16 +89,16 @@ NEEDS-HUMAN(`builder-blocked`). Print: `<T> <title>: BUILD (round 0)`.
 ## REVIEW
 
 Follow execute-loop.md § REVIEW.
-1. `prevHead` = `""` from BUILD, `#head` from FIX; `n = #round + 1`; head → `set_attribute(<tn>, round=<n>,
-   head=<sha>)`; status(reviewing); ledger `round`, `head`, `prevHead`. Resume (`reviewing`): `n = #round`, keep
-   `#head`/`prevHead`, skip these writes.
+1. `n = #round + 1`; `prevHead` = `""` from BUILD, `#head` from FIX; ledger `phase:"REVIEW"`, `round`, `prevHead`;
+   then head → `set_attribute(<tn>, round=<n>, head=<sha>)`; then status(reviewing). Resume (`reviewing`, or the
+   resume table's bump window): `n = #round`, keep `#head`/`prevHead`, skip these writes.
 2. `factory-review-package <wt> <from> <#head> --out <taskDir>/review-R<n>.diff`, `<from>` = non-empty `prevHead`
    else `#base` (resume reuses an existing diff); non-zero exit → report `error`, stop.
 3. `<open>` = `<taskDir>/open-findings-R<n-1>-human.json`, else `…-R<n-1>.json`, if present; none → drop
    `, open=<open>`. run-start per reviewer (title `<ts> <agent> <reviewer> pending`, renamed `<ts> <agent> <reviewer>
    <agentId>`). Send the four Agent calls in a single assistant message (resume: dispatch only reviewers without
    `review-R<n>-<reviewer>.json`; read the others' JSON from disk); run them in the foreground
-   (`run_in_background: false`); do not proceed until all four results are in. Description
+   (`run_in_background: false`); wait for all four results. Description
    `<agent> <T> R<n> [task:<tn>]`:
    ```
    Task: <Lens> review of <T> round <n> [task:<tn>]
@@ -186,10 +186,11 @@ Print: `<T> <title>: MERGE (round <n>)`.
 ## DONE
 
 Follow execute-loop.md § DONE.
-1. status(done); `set_attribute(<tn>, mergedSha=<sha>)`; `delete_attribute(<tn>, escalation)` if present.
-2. SOP 5 stale check in `<repoPath>`; stale → `cd <repoPath> && graphify update .`.
-3. `search_notes("#factoryTask #workstream='<slug>' #milestoneId='<M>' #status!=done")` empty →
-   `set_attribute(<milestone>, status=done)`; log `<M> done`.
+1. `set_attribute(<tn>, mergedSha=<sha>)`; `delete_attribute(<tn>, escalation)` if present;
+   `search_notes("#factoryTask #workstream='<slug>' #milestoneId='<M>' #status!=done")` returns no task other than
+   `<T>` → `set_attribute(<milestone>, status=done)`; log `<M> done`.
+2. status(done).
+3. SOP 5 stale check in `<repoPath>`; stale → `cd <repoPath> && graphify update .`.
 4. log `done <sha>`; ledger `phase:"SELECT", task:null, round:0, prevHead:""`.
 
 Next: SELECT (unless MERGE stopped). Print: `<T> <title>: DONE (round <n>)`.
