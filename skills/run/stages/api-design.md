@@ -14,7 +14,11 @@ approved `API Design` note. Notation: `<projectNoteId>` = `factory.projectNoteId
   Markdown content). Then one `mcp__trilium__set_attribute` per label named.
 - **Export `<kind>`**: `mcp__trilium__get_note_content(<noteId>)` → Write `<docs>/<kind>.md`.
 - **Log**: `mcp__trilium__append_to_note(<Factory Log>, "- <ISO ts> [api-design] <event>")`.
-- **Stop api-design** (a `Stop` answer or a stop below): Log `stage stopped — <reason>`;
+- **Drafts first.** Until `Approve` in step 7, write only `<draft>` = `<docs>/api-design-draft.md` and `<repoDraft>`
+  = `<repoPath>/.factory/workstreams/<slug>/api-draft/<apiDocPath>`; Trilium (the Standards' `#apiDocPath`
+  included), `<docs>/api-design.md` and `<wt>` stay as they are.
+- **Stop api-design** (a `Stop` answer or a stop below):
+  `rm -rf "<draft>" "<repoPath>/.factory/workstreams/<slug>/api-draft"`; Log `stage stopped — <reason>`;
   `factory-event stage --stage api-design --status stopped --workstream <slug> </dev/null`; leave `#stageApi` unchanged.
 
 ## Prerequisites
@@ -54,33 +58,39 @@ approved `API Design` note. Notation: `<projectNoteId>` = `factory.projectNoteId
 4. **Repo document path.** `mcp__trilium__get_child_notes(<projectNoteId>)`, exact title `Standards` →
    `<standardsId>`; `mcp__trilium__get_attributes(<standardsId>)`: `#apiDocPath` set → `<apiDocPath>`. Else propose
    the location the Standards' API documentation section names, else `openapi/openapi.yaml` (AsyncAPI
-   `asyncapi/asyncapi.yaml`, gRPC `proto/<service>.proto`, GraphQL `schema.graphql`): AskUserQuestion `Use <path> / Stop` (another repo-relative path
-   via Other; no `..`, no absolute path); then `mcp__trilium__set_attribute(<standardsId>, apiDocPath=<path>)` so
-   every workstream uses the same document.
-5. **Write the repo document** (worktree only; SOP 4 and 8).
+   `asyncapi/asyncapi.yaml`, gRPC `proto/<service>.proto`, GraphQL `schema.graphql`): AskUserQuestion
+   `Use <path> / Stop` (another repo-relative path via Other; no `..`, no absolute path); `<newPath>` = yes (it is
+   stored on Standards at Approve so every workstream uses the same document).
+5. **Draft the repo document** (SOP 4 and 8: the worktree is only read here).
    - `factory-worktree ensure <slug> --repo "<repoPath>"` → `path` = `<wt>`. Exit 2 → AskUserQuestion
      `Adopt branch <slug> / Stop`; Adopt → rerun with `--adopt`. Exit 1 or 3 → show `error`; Stop api-design.
      `git -C "<wt>" branch --show-current` must print `<slug>`; else Stop api-design. Never write under `<repoPath>`
      outside `.factory/`: that tree is `main`.
-   - Create or update `<wt>/<apiDocPath>` (valid OpenAPI 3.1 or AsyncAPI 3 YAML, proto3, or GraphQL SDL): add or
-     change only this workstream's operations, schemas, security schemes and error responses; leave the rest as is.
-   - Self-check: every operation agreed in step 3 is in the file with its auth and error responses.
-6. **API Design note.** Read `$PLUGIN_ROOT/skills/run/templates/api-design.md`; fill `{{slug}}`, `{{plan_rev}}`
+   - Write `<repoDraft>` = the current `<wt>/<apiDocPath>` (if it exists) with this workstream's operations,
+     schemas, security schemes and error responses added or changed, the rest as is (valid OpenAPI 3.1 or AsyncAPI 3
+     YAML, proto3, or GraphQL SDL).
+   - Self-check: every operation agreed in step 3 is in the draft with its auth and error responses.
+6. **Draft API Design.** Read `$PLUGIN_ROOT/skills/run/templates/api-design.md`; fill `{{slug}}`, `{{plan_rev}}`
    (`<planRev>`), `{{api_doc_path}}` (`<apiDocPath>`, or `n/a`), `{{applicability}}` (step 1 evidence and answer),
    `{{style}}`, `{{endpoint_rows}}` (one `| <METHOD> | <path> | <request> | <response> | <errors> | <auth> |` row per
    operation; rpc or GraphQL: the name in Method/Path), `{{models}}`, `{{auth}}`, `{{errors}}`, `{{versioning}}`
    (e.g. `/v1` prefix, additive changes only), `{{changes}}` (step 2: added, changed, removed), `{{examples}}` (one
-   request and response per key operation); keep lines 1–2. Write `API Design` under `<ws>`; labels
-   `#factoryDoc=api-design`, `#apiDocPath=<apiDocPath>` (empty when none), `#project=<repoName>`,
-   `#workstream=<slug>`. Export `api-design`.
-7. **Approval.** Summarise (style, operations, auth, error format, `<wt>/<apiDocPath>` with
-   `git -C "<wt>" diff --stat -- "<apiDocPath>"`, `<docs>/api-design.md`). AskUserQuestion `Approve / Edit / Stop`.
-   - Edit → the user's changes via Other; update the repo document and the note, Export `api-design`, ask again.
-   - Stop → the draft stays uncommitted in `<wt>`: say so; Stop api-design (a re-run picks it up).
-   - Approve → no repo document → no commit. Else, if `git -C "<wt>" status --porcelain -- "<apiDocPath>"` is
-     non-empty: `git -C "<wt>" add -- "<apiDocPath>" && git -C "<wt>" commit -m "docs(api): <slug>" -- "<apiDocPath>"`;
-     `<sha>` = `git -C "<wt>" rev-parse --short HEAD`. Log `<slug> API Design approved, <apiDocPath> committed <sha>
-     on <slug>` (or `unchanged`).
+   request and response per key operation); keep lines 1–2. Write it to `<draft>`.
+7. **Approval.** Summarise from the drafts (style, operations, auth, error format, `<draft>`) and show
+   `git diff --no-index -- "<wt>/<apiDocPath>" "<repoDraft>"` (`/dev/null` in place of a missing file).
+   AskUserQuestion `Approve / Edit / Stop`.
+   - Edit → the user's changes via Other; update both drafts; ask again. Stop → Stop api-design.
+   - Approve, in this order:
+     1. Repo document (none → skip): `mkdir -p "$(dirname "<wt>/<apiDocPath>")" && cp "<repoDraft>" "<wt>/<apiDocPath>"`;
+        if `git -C "<wt>" status --porcelain -- "<apiDocPath>"` is non-empty:
+        `git -C "<wt>" add -- "<apiDocPath>" && git -C "<wt>" commit -m "docs(api): <slug>" -- "<apiDocPath>"`;
+        `<sha>` = `git -C "<wt>" rev-parse --short HEAD`.
+     2. `<newPath>` → `mcp__trilium__set_attribute(<standardsId>, apiDocPath=<apiDocPath>)`.
+     3. Write `API Design` under `<ws>` with the `<draft>` content; labels `#factoryDoc=api-design`,
+        `#approval=approved`, `#apiDocPath=<apiDocPath>` (empty when none), `#project=<repoName>`,
+        `#workstream=<slug>`. Export `api-design`; `rm -rf "<draft>" "<repoPath>/.factory/workstreams/<slug>/api-draft"`.
+     4. Log `<slug> API Design approved, <apiDocPath> committed <sha> on <slug>` (or `unchanged`, or `no repo
+        document`).
 
 ## Completion
 

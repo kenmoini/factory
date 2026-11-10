@@ -15,7 +15,10 @@ snapshot: brainstorm may have changed it); `<ws>` = its note id; `<docs>` =
   Markdown content). Then one `mcp__trilium__set_attribute` per label named.
 - **Export `<kind>`**: `mcp__trilium__get_note_content(<noteId>)` → Write `<docs>/<kind>.md`.
 - **Log**: `mcp__trilium__append_to_note(<Factory Log>, "- <ISO ts> [uiux] <event>")`.
-- **Stop uiux** (a `Stop` answer): Log `stage stopped — <reason>`;
+- **Drafts first.** Until `Approve` in step 6, write only `<draft>` = `<docs>/uiux-draft.md` and mockups (on a
+  re-run with an existing `UI-UX Spec`, in `<mock>/next/`); Trilium, `<docs>/uiux.md` and approved mockups stay as
+  they are.
+- **Stop uiux** (a `Stop` answer): `rm -rf "<draft>" "<mock>/next"`; Log `stage stopped — <reason>`;
   `factory-event stage --stage uiux --status stopped --workstream <slug> </dev/null`; leave `#stageUiux` unchanged.
 
 ## Prerequisites
@@ -55,37 +58,39 @@ snapshot: brainstorm may have changed it); `<ws>` = its note id; `<docs>` =
      each of these work for the user: steps, screens, what happens on errors?" options
      `The Spec's flows are right as written` / `Stop`.
    - Gaps (call 3): empty, loading and error states, accessibility needs, target devices.
-4. **Mockups** (only for `Yes, show me options`).
-   - `mkdir -p "<mock>"`. Write 2–3 `<mock>/option-<n>.html`, each a distinct direction (layout, density, palette,
+4. **Mockups** (only for `Yes, show me options`). `<mdir>` = `<mock>`, or `<mock>/next` on a re-run with an existing
+   `UI-UX Spec` (URL and paths below then end in `next/`).
+   - `mkdir -p "<mdir>"`. Write 2–3 `<mdir>/option-<n>.html`, each a distinct direction (layout, density, palette,
      typography) showing the key screens and states from step 3 with static sample data; its name and a one-line
      rationale at the top. Plain HTML and CSS in one file: inline `<style>`, optional inline `<script>` only to switch
      screens or states; no CDN, web font, remote image or any network URL. Follow the chosen framework's visual idioms
      without importing it.
-   - Write `<mock>/index.html`: heading `<slug> — UI options`, one link per option (`option-<n>.html`) with its name
+   - Write `<mdir>/index.html`: heading `<slug> — UI options`, one link per option (`option-<n>.html`) with its name
      and rationale.
    - Mockups live only in `<mock>` (gitignored), never in the repo tree or the worktree.
    - `factory-dashboard open`; `<port>` = `factory-config get dashboardPort 2>/dev/null || echo 7777`. Tell the user
      the URL `http://127.0.0.1:<port>/mockups/<repoName>/<slug>/`. Dashboard not running (`"running":false`, e.g. not
-     built) → `factory-dashboard start` once; still down → give the file `<mock>/index.html` to open in a browser.
+     built) → `factory-dashboard start` once; still down → give the file `<mdir>/index.html` to open in a browser.
    - AskUserQuestion "Which option?" options `Option 1 — <name>` … `Option <n> — <name>` (a mix or changes via Other,
      e.g. "layout of 1, colours of 3"). A mix or changes → update or add an option file (at most 2 revisions) and ask
      again. `<chosen>` = the answer.
-5. **UI-UX Spec.** Read `$PLUGIN_ROOT/skills/run/templates/uiux-spec.md`; fill `{{slug}}`, `{{plan_rev}}`
+5. **Draft UI-UX Spec.** Read `$PLUGIN_ROOT/skills/run/templates/uiux-spec.md`; fill `{{slug}}`, `{{plan_rev}}`
    (`<planRev>`), `{{approved_at}}` = `pending`, `{{applicability}}` (step 1 evidence and answer), `{{framework}}`,
    `{{inventory}}` (step 2), `{{flow_rows}}` (one `| <story> | <flow steps> | <screens> |` row per story),
    `{{screens}}` (purpose, main elements, navigation per screen), `{{states}}` (empty, loading, error, success per
    screen), `{{accessibility}}` (WCAG 2.2 AA baseline: keyboard, focus order, contrast, labels; plus the user's needs),
-   `{{mockups_path}}` = `<mock>/`, `{{mockups_url}}` (the step 4 URL), `{{chosen_option}}` = `<chosen>`,
-   `{{visual_notes}}` (colours, type scale, spacing taken from the chosen option), `{{open_questions}}` (or `none`);
-   no mockups → `{{mockups_path}}`, `{{mockups_url}}`, `{{chosen_option}}` = `n/a` and `{{visual_notes}}` = the
-   style to follow (existing UI, or the framework's defaults); keep lines 1–2. Write `UI-UX Spec` under `<ws>`; labels `#factoryDoc=uiux`, `#project=<repoName>`, `#workstream=<slug>`.
-   Export `uiux`.
-6. **Approval.** Summarise (framework, stories and flows, chosen option, `<docs>/uiux.md`). AskUserQuestion
-   `Approve / Edit / Stop`.
-   - Edit → the user's changes via Other; update the note (`mcp__trilium__set_note_content`), Export `uiux`, ask
-     again. Stop → Stop uiux.
-   - Approve → `mcp__trilium__edit_note_content` on `UI-UX Spec`: `**Approved:** pending` → `**Approved:** <ISO ts>`;
-     Export `uiux`; Log `<slug> UI-UX Spec approved`.
+   `{{mockups_path}}` = `<mock>/`, `{{mockups_url}}` (the step 4 URL without `next/`), `{{chosen_option}}` =
+   `<chosen>`, `{{visual_notes}}` (colours, type scale, spacing taken from the chosen option), `{{open_questions}}`
+   (or `none`); no mockups → `{{mockups_path}}`, `{{mockups_url}}`, `{{chosen_option}}` = `n/a` and
+   `{{visual_notes}}` = the style to follow (existing UI, or the framework's defaults); keep lines 1–2. Write it to
+   `<draft>`.
+6. **Approval.** Summarise from `<draft>` (framework, stories and flows, chosen option, the draft path).
+   AskUserQuestion `Approve / Edit / Stop`.
+   - Edit → the user's changes via Other; update `<draft>`; ask again. Stop → Stop uiux.
+   - Approve → in `<draft>` replace `**Approved:** pending` with `**Approved:** <ISO ts>`. If `<mock>/next` exists:
+     `rm -f "<mock>"/*.html && mv "<mock>/next"/*.html "<mock>/" && rmdir "<mock>/next"`. Write `UI-UX Spec` under
+     `<ws>` with the draft content; labels `#factoryDoc=uiux`, `#approval=approved`, `#project=<repoName>`,
+     `#workstream=<slug>`. Export `uiux`; `rm -f "<draft>"`; Log `<slug> UI-UX Spec approved`.
 
 ## Completion
 
