@@ -5,6 +5,7 @@ import { defaultBranch, git } from "./git";
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 export function validateSlug(slug: string): string | null {
+  if (SLUG_RE.test(slug) && slug.endsWith("-")) return `invalid slug "${slug}": slug must not end with "-"`;
   if (SLUG_RE.test(slug)) return null;
   return `invalid slug "${slug}": must match ${SLUG_RE} (lowercase letters, digits and hyphens; start with a letter or digit; max 63 chars)`;
 }
@@ -73,16 +74,20 @@ export async function removeWorktree(
   const reason = validateSlug(slug);
   if (reason) throw new Error(reason);
   const path = worktreePath(repoDir, slug);
-  const existed = existsSync(path);
-  const r = await git(repoDir, "worktree", "remove", "--force", path);
+  if (existsSync(path)) {
+    const r = await git(repoDir, "worktree", "remove", "--force", path);
+    if (r.code !== 0) throw new Error(`git worktree remove failed: ${r.err}`);
+  }
   await git(repoDir, "worktree", "prune");
   if (opts.deleteBranch) {
-    await git(repoDir, "branch", "-D", slug);
     const cfg = readRepoConfig(repoDir);
-    if (cfg?.workstreams?.[slug]) {
-      delete cfg.workstreams[slug];
-      writeRepoConfig(repoDir, cfg);
+    if (!cfg?.workstreams?.[slug]) {
+      throw new ForeignBranchError(`branch "${slug}" is not a factory workstream; refusing to delete it`);
     }
+    const b = await git(repoDir, "branch", "-D", slug);
+    if (b.code !== 0) throw new Error(`git branch -D failed: ${b.err}`);
+    delete cfg.workstreams[slug];
+    writeRepoConfig(repoDir, cfg);
   }
-  return { removed: existed && r.code === 0 };
+  return { removed: true };
 }

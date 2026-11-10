@@ -21,6 +21,7 @@ describe("validateSlug", () => {
     expect(validateSlug("My Slug")).toBeString();
     expect(validateSlug("")).toBeString();
     expect(validateSlug("-a")).toBeString();
+    expect(validateSlug("a-")).toContain('must not end with "-"');
   });
   test("accepts good slugs", () => expect(validateSlug("a-b")).toBeNull());
 });
@@ -69,5 +70,20 @@ describe("removeWorktree", () => {
     await removeWorktree(repo, "demo", { deleteBranch: true });
     expect((await git(repo, "rev-parse", "--verify", "--quiet", "refs/heads/demo")).code).not.toBe(0);
     expect(readRepoConfig(repo)?.workstreams.demo).toBeUndefined();
+  });
+  test("deleteBranch refuses a branch the factory does not own", async () => {
+    const repo = await makeRepo();
+    await git(repo, "branch", "other");
+    expect((await git(repo, "worktree", "add", worktreePath(repo, "other"), "other")).code).toBe(0);
+    await expect(removeWorktree(repo, "other", { deleteBranch: true })).rejects.toBeInstanceOf(ForeignBranchError);
+    expect((await git(repo, "rev-parse", "--verify", "--quiet", "refs/heads/other")).code).toBe(0);
+  });
+  test("branch -D failure throws and keeps config entry", async () => {
+    const repo = await makeRepo();
+    await ensureWorktree(repo, "demo");
+    const extra = mkdtempSync(join(tmpdir(), "factory-wt-extra-")) + "/x";
+    expect((await git(repo, "worktree", "add", "--force", extra, "demo")).code).toBe(0);
+    await expect(removeWorktree(repo, "demo", { deleteBranch: true })).rejects.toThrow("git branch -D failed");
+    expect(readRepoConfig(repo)?.workstreams.demo).toBeDefined();
   });
 });
