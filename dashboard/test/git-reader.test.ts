@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { GitReader, runGit } from "../src/git/reader";
+import { GitReader, runGit, type GitRunner } from "../src/git/reader";
 
 let root: string, wt: string;
 // every commit gets its own increasing timestamp, so --date-order is deterministic
@@ -53,6 +53,41 @@ describe("GitReader", () => {
     expect(snap.commits[0].tasks).toEqual([{ slug: "checkout-flow", taskId: "T-002" }]);
     expect(snap.commits.at(-1)!.tags).toEqual(["v0.1.0"]);
     expect(snap.fingerprint).toMatch(/^[0-9a-f]+$/);
+  });
+  test("probe: refs, live worktrees with dirty counts and the snapshot's fingerprint; no log, no ahead/behind", async () => {
+    const ran: string[] = [];
+    const r = new GitReader(root, (args, cwd, opts) => { ran.push(args[0]); return runGit(args, cwd, opts); });
+    const p = await r.probe();
+    if ("error" in p) throw new Error(p.error);
+    expect(p.refs.map((x) => x.name).sort()).toEqual(["checkout-flow", "main", "v0.1.0"]);
+    expect(p.worktrees.map((w) => [w.path, w.dirty])).toEqual([[root, 1], [wt, 1]]); // the root sees the untracked .factory/
+    expect(ran).not.toContain("log"); expect(ran).not.toContain("rev-list");
+    expect(p.fingerprint).toBe((await r.snapshot()).fingerprint);
+    expect(await r.build(p, { limit: 2 })).toMatchObject({ fingerprint: p.fingerprint, limit: 2, truncated: true });
+  });
+  test("build: six branches get their ahead/behind, at most four rev-list processes at a time", async () => {
+    const dir = tempDir("factory-git-pool-");
+    try {
+      git(dir, "init", "-q", "-b", "main"); commit(dir, "a.txt", "init");
+      for (let i = 1; i <= 6; i++) {
+        git(dir, "checkout", "-q", "-b", `b${i}`, "main");
+        for (let k = 0; k < i; k++) commit(dir, `b${i}-${k}.txt`, `b${i} ${k}`);
+      }
+      git(dir, "checkout", "-q", "main"); commit(dir, "m.txt", "main moves on");
+      let running = 0, peak = 0;
+      const counted: GitRunner = async (args, cwd, opts) => {
+        if (args[0] !== "rev-list") return runGit(args, cwd, opts);
+        running++; peak = Math.max(peak, running);
+        try { return await runGit(args, cwd, opts); } finally { running--; }
+      };
+      const snap = await new GitReader(dir, counted).snapshot();
+      expect(snap.error).toBeUndefined();
+      expect(snap.branches.map((b) => [b.name, b.ahead, b.behind])).toEqual([
+        ["b1", 1, 1], ["b2", 2, 1], ["b3", 3, 1], ["b4", 4, 1], ["b5", 5, 1], ["b6", 6, 1], ["main", 0, 0],
+      ]);
+      expect(snap.commits.length).toBe(23);
+      expect(peak).toBe(4);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
   test("branch filter and limit", async () => {
     const snap = await new GitReader(root).snapshot({ limit: 2, branch: "checkout-flow" });

@@ -6,6 +6,13 @@ import type { RawCommit, Ref, Worktree } from "./parse";
 export type GitRunner = (args: string[], cwd: string, opts?: { timeoutMs?: number; env?: Record<string, string>; maxOut?: number }) => Promise<{ code: number; out: string; err: string }>;
 export const GIT_TIMEOUT_MS = 10_000;
 export const GIT_MAX_OUT = 8 * 1024 * 1024;
+/** Most `rev-list` (ahead/behind) processes one `build` runs at once. */
+export const AHEAD_BEHIND_POOL = 4;
+
+/** A live worktree (not bare, folder present) with its number of changed or untracked entries. */
+export interface ProbedWorktree extends Worktree { dirty: number }
+/** The cheap part of a snapshot, read on every poll: refs, live worktrees with dirty counts, and their fingerprint. */
+export interface RepoProbe { fingerprint: string; refs: Ref[]; worktrees: ProbedWorktree[] }
 
 /** Runs git without a shell; never throws. Timeout → code 124, output over `opts.maxOut` (default `GIT_MAX_OUT`) → 125 (git is killed), spawn failure → 127. */
 export const runGit: GitRunner = async (args, cwd, opts) => {
@@ -118,34 +125,45 @@ export class GitReader {
     return { commit: toRepoCommit(raw, tipsOf(await this.refs())), body, files, totals, parents };
   }
 
-  /** Everything the Repo tab shows; never throws, a failure becomes `error` on an empty snapshot. */
-  async snapshot(opts: { limit?: number; branch?: string } = {}): Promise<RepoSnapshot> {
-    const limit = opts.limit ?? 100;
+  /** Refs, live worktrees with their dirty counts, and the fingerprint of both: no log, no ahead/behind. Never throws. */
+  async probe(): Promise<RepoProbe | { error: string }> {
     try {
       if (!(await this.probeRepo()).ok) throw new GitError(`not a git repository: ${this.repoPath}`, 128);
       const refs = await this.refs();
-      const defaultBranch = GitReader.defaultBranch(refs);
-      const worktrees = await this.worktrees();
       // a prunable worktree whose folder is gone is skipped; one whose status fails counts as clean
-      const live = worktrees.filter((w) => !w.bare && existsSync(w.path));
-      const dirtyOf = new Map<string, number>();
-      await Promise.all(live.map(async (w) => { dirtyOf.set(w.path, await this.dirty(w.path).catch(() => 0)); }));
-      const branches: RepoBranch[] = await Promise.all(refs.filter((r) => r.kind === "branch").map(async (r) => {
+      const live = (await this.worktrees()).filter((w) => !w.bare && existsSync(w.path));
+      const worktrees = await Promise.all(live.map(async (w): Promise<ProbedWorktree> => ({ ...w, dirty: await this.dirty(w.path).catch(() => 0) })));
+      return { refs, worktrees, fingerprint: fingerprintOf(refs, worktrees) };
+    } catch (e) {
+      return { error: messageOf(e) };
+    }
+  }
+
+  /** The snapshot for a probe: ahead/behind (`AHEAD_BEHIND_POOL` branches at a time) and the log. Never throws. */
+  async build(probe: RepoProbe, opts: { limit?: number; branch?: string } = {}): Promise<RepoSnapshot> {
+    const limit = opts.limit ?? 100;
+    try {
+      const { refs, worktrees } = probe;
+      const defaultBranch = GitReader.defaultBranch(refs);
+      const branches = await mapPool(refs.filter((r) => r.kind === "branch"), AHEAD_BEHIND_POOL, async (r) => {
         const b: RepoBranch = { name: r.name, sha: r.sha, isDefault: r.name === defaultBranch, ahead: 0, behind: 0 };
-        const w = live.find((x) => !x.detached && x.branch === r.name);
-        if (w) b.worktree = { path: w.path, dirty: dirtyOf.get(w.path) ?? 0 };
+        const w = worktrees.find((x) => !x.detached && x.branch === r.name);
+        if (w) b.worktree = { path: w.path, dirty: w.dirty };
         if (!b.isDefault) Object.assign(b, await this.aheadBehind(r.name, defaultBranch));
         return b;
-      }));
+      });
       const { commits, truncated } = await this.log({ limit, branch: opts.branch });
       const tips = tipsOf(refs);
-      return {
-        repoPath: this.repoPath, defaultBranch, branches, commits: commits.map((c) => toRepoCommit(c, tips)), limit, truncated,
-        fingerprint: fingerprintOf(refs, live.map((w) => ({ path: w.path, head: w.head, dirty: dirtyOf.get(w.path) ?? 0 }))),
-      };
+      return { repoPath: this.repoPath, defaultBranch, branches, commits: commits.map((c) => toRepoCommit(c, tips)), limit, truncated, fingerprint: probe.fingerprint };
     } catch (e) {
-      return { repoPath: this.repoPath, defaultBranch: "main", branches: [], commits: [], limit, truncated: false, fingerprint: "", error: e instanceof Error ? e.message : String(e) };
+      return errorSnapshot(this.repoPath, limit, messageOf(e));
     }
+  }
+
+  /** Everything the Repo tab shows: `probe`, then `build`. Never throws; a failure becomes `error` on an empty snapshot. */
+  async snapshot(opts: { limit?: number; branch?: string } = {}): Promise<RepoSnapshot> {
+    const probe = await this.probe();
+    return "error" in probe ? errorSnapshot(this.repoPath, opts.limit ?? 100, probe.error) : this.build(probe, opts);
   }
 
   /** "main" if present, else "master", else the first branch, else "main". */
@@ -153,6 +171,27 @@ export class GitReader {
     const names = refs.filter((r) => r.kind === "branch").map((r) => r.name);
     return names.includes("main") ? "main" : names.includes("master") ? "master" : names[0] ?? "main";
   }
+}
+
+/** An empty snapshot carrying `message` as its error: what the Repo tab shows when the repository cannot be read. */
+export function errorSnapshot(repoPath: string, limit: number, message: string): RepoSnapshot {
+  return { repoPath, defaultBranch: "main", branches: [], commits: [], limit, truncated: false, fingerprint: "", error: message };
+}
+
+const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** `Promise.all(items.map(fn))` with at most `size` calls running at once; after a rejection no further call starts. */
+async function mapPool<T, R>(items: T[], size: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      try { out[i] = await fn(items[i]); } catch (e) { next = items.length; throw e; }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(size, items.length) }, worker));
+  return out;
 }
 
 /** Branch and tag names by the commit they point at. */

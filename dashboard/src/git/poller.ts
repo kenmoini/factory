@@ -2,9 +2,12 @@ import type { EventHub } from "../hub";
 import type { RepoSnapshot } from "../shared/types";
 import type { GitReader } from "./reader";
 
-export interface GitPollerDeps { reader: Pick<GitReader, "snapshot">; hub: EventHub }
+export interface GitPollerDeps { reader: Pick<GitReader, "probe" | "build">; hub: EventHub }
 
-/** Polls one repo's git state and publishes a `repo` event whenever the snapshot's fingerprint changes. */
+/**
+ * Polls one repo's git state: each poll probes refs, worktrees and dirty counts, and only when their fingerprint
+ * differs from the current snapshot's builds a new snapshot (log, ahead/behind) and publishes it as a `repo` event.
+ */
 export class GitPoller {
   private snap: RepoSnapshot | null = null;
   private err: string | null = null;
@@ -42,10 +45,12 @@ export class GitPoller {
   }
 
   private async doRefresh(): Promise<boolean> {
-    const data = await this.deps.reader.snapshot({ limit: this.limit });
+    const probe = await this.deps.reader.probe();
+    if ("error" in probe) { this.err = probe.error; return false; }
+    if (this.snap && this.snap.fingerprint === probe.fingerprint) { this.err = null; return false; }
+    const data = await this.deps.reader.build(probe, { limit: this.limit });
     if (data.error) { this.err = data.error; return false; }
     this.err = null;
-    if (this.snap && this.snap.fingerprint === data.fingerprint) return false;
     this.snap = data;
     this.deps.hub.publish(this.repoPath, { type: "repo", data });
     return true;
