@@ -19,4 +19,18 @@ export interface WorkstreamSnapshot { project: Project; workstream: Workstream|n
 /** `GET /api/tasks/:id`: the task with its spec and approval note bodies, and its reviews and runs from the snapshot. */
 export interface TaskDetail { task: Task; spec?: { content: string; format: "html"|"markdown" }; reviews: Review[]; approval?: { content: string }; runs: AgentRun[] }
 export interface HookEvent { event: string; ts: string; project: string; stage?: string; status?: string; task?: string; workstream?: string; payload: Record<string, unknown> }
-export type StreamEvent = { type:"snapshot"; data: WorkstreamSnapshot } | { type:"agent"; data:{ op:"start"|"update"|"stop"; agent: LiveAgent } } | { type:"step"; data:{ agentId: string; step: Step } } | { type:"heartbeat"; data:{ ts: string } };
+/** A branch's worktree checkout: `dirty` is the number of changed or untracked entries. */
+export interface RepoWorktree { path: string; dirty: number }
+/** `ahead`/`behind` are counts against the default branch; `worktree` is set when the branch is checked out somewhere. */
+export interface RepoBranch { name: string; sha: string; isDefault: boolean; ahead: number; behind: number; worktree?: RepoWorktree }
+/** A factory task a commit belongs to, from a `Task:` trailer or a merge subject. */
+export interface TaskRef { slug: string; taskId: string }
+/** `branches` and `tags` list the refs whose tip is this commit. */
+export interface RepoCommit { sha: string; short: string; parents: string[]; subject: string; author: string; authorTs: string; branches: string[]; tags: string[]; tasks: TaskRef[]; isMerge: boolean }
+/** The Repo tab's payload; `truncated` is set when history was cut at `limit`, `error` when git could not be read. */
+export interface RepoSnapshot { repoPath: string; defaultBranch: string; branches: RepoBranch[]; commits: RepoCommit[]; limit: number; truncated: boolean; fingerprint: string; error?: string }
+/** One file of a commit's numstat; binary files carry 0/0 counts. */
+export interface CommitFile { path: string; added: number; deleted: number; binary?: boolean }
+/** `GET` commit detail: the commit with its message body, changed files, totals and parent summaries. */
+export interface CommitDetail { commit: RepoCommit; body: string; files: CommitFile[]; totals: { files: number; added: number; deleted: number }; parents: { sha: string; short: string; subject: string }[] }
+export type StreamEvent = { type:"snapshot"; data: WorkstreamSnapshot } | { type:"agent"; data:{ op:"start"|"update"|"stop"; agent: LiveAgent } } | { type:"step"; data:{ agentId: string; step: Step } } | { type:"heartbeat"; data:{ ts: string } } | { type:"repo"; data: RepoSnapshot };
