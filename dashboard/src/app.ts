@@ -7,6 +7,8 @@ import type { TranscriptTailer } from "./agents/tailer";
 import type { HookEvent } from "./shared/types";
 import { NOT_CONFIGURED, TOKEN_NOT_CONFIGURED, TriliumClient, TriliumConfigError } from "./trilium/client";
 import { Poller } from "./trilium/poller";
+import { GitReader } from "./git/reader";
+import { GitPoller } from "./git/poller";
 import { createApi } from "./routes/api";
 import { stopAgent } from "./routes/events";
 
@@ -19,10 +21,12 @@ export interface AppDeps {
   homeDir: string;
   /** The fetch every Trilium client uses; default the global one (tests observe requests through it). */
   fetchImpl?: typeof fetch;
+  /** The git reader for a repo; default `new GitReader(path)` (tests may substitute one). */
+  gitReader?: (repoPath: string) => GitReader;
 }
 
 /** Paths that load the web app. Only these: a `/*` route would shadow `/api/*` and `/mockups/*`, which `fetch` handles. */
-export const SPA_PATHS = ["/", "/kanban", "/docs", "/agents", "/mockups-tab"] as const;
+export const SPA_PATHS = ["/", "/kanban", "/docs", "/agents", "/mockups-tab", "/repo"] as const;
 
 /** A live agent whose transcript has not grown for this long (or that never had one) is considered gone. */
 export const IDLE_MS = 30 * 60_000;
@@ -33,6 +37,7 @@ export interface App {
   routes: Record<string, HTMLBundle>;
   pollers: Map<string, Poller>;
   tailers: Map<string, TranscriptTailer>;
+  gitPollers: Map<string, GitPoller>;
   addRepo(path: string): RepoEntry | null;
   /** Stops idle live agents (see IDLE_MS); runs every `sweepMs`. */
   sweep(): void;
@@ -55,6 +60,8 @@ export function createApp(
 ): App {
   const pollers = new Map<string, Poller>();
   const tailers = new Map<string, TranscriptTailer>();
+  const gitPollers = new Map<string, GitPoller>();
+  const gitTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const lastTask = new Map<string, HookEvent>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const clients = new Map<string, { creds: TriliumCreds; client: TriliumClient }>();
@@ -87,6 +94,25 @@ export function createApp(
     timers.set(repoKey, t);
   }
 
+  /** Debounced like `refresh`, with its own timers: a hook event may have changed git. */
+  function refreshGit(repoKey: string): void {
+    if (gitTimers.has(repoKey)) return;
+    const t = setTimeout(() => {
+      gitTimers.delete(repoKey);
+      gitPollers.get(repoKey)?.refresh().catch(() => {});
+    }, 250);
+    t.unref?.();
+    gitTimers.set(repoKey, t);
+  }
+
+  const gitReaders = new Map<string, GitReader>();
+  /** One reader per repo path, shared by the repo's git poller and the routes' filtered views. */
+  function gitReader(repoKey: string): GitReader {
+    let r = gitReaders.get(repoKey);
+    if (!r) { r = (deps.gitReader ?? ((p) => new GitReader(p)))(repoKey); gitReaders.set(repoKey, r); }
+    return r;
+  }
+
   function addRepo(path: string): RepoEntry | null {
     const entry = deps.repos.register(path);
     if (!entry) return null;
@@ -99,6 +125,10 @@ export function createApp(
     }, { intervalMs: deps.config.pollMs });
     pollers.set(entry.repoPath, poller);
     poller.start();
+    gitPollers.get(repoKey)?.stop();
+    const gitPoller = new GitPoller(repoKey, { reader: gitReader(repoKey), hub: deps.hub }, { intervalMs: deps.config.gitPollMs });
+    gitPollers.set(repoKey, gitPoller);
+    gitPoller.start();
     return entry;
   }
 
@@ -132,13 +162,16 @@ export function createApp(
   function stop(): void {
     clearInterval(sweeper);
     for (const p of pollers.values()) p.stop();
+    for (const p of gitPollers.values()) p.stop();
+    for (const t of gitTimers.values()) clearTimeout(t);
+    gitTimers.clear();
     for (const t of timers.values()) clearTimeout(t);
     timers.clear();
     for (const t of tailers.values()) t.stop();
     tailers.clear();
   }
 
-  const api = createApi({ deps, pollers, addRepo, clientFor, tailers, lastTask, refresh, syncRepo, followWorkstream, now, heartbeatMs: opts.heartbeatMs });
+  const api = createApi({ deps, pollers, gitPollers, addRepo, clientFor, tailers, lastTask, refresh, refreshGit, gitReader, syncRepo, followWorkstream, now, heartbeatMs: opts.heartbeatMs });
 
   // every route `fetch` serves (API, SSE, mockups, 404s); the SPA entry paths are static bundles served by Bun's `routes`
   async function fetch(req: Request, server?: { port?: number }): Promise<Response> {
@@ -150,5 +183,5 @@ export function createApp(
 
   const html = opts.html;
   const routes: Record<string, HTMLBundle> = html ? Object.fromEntries(SPA_PATHS.map((p) => [p, html])) : {};
-  return { fetch, routes, pollers, tailers, addRepo, sweep, stop };
+  return { fetch, routes, pollers, tailers, gitPollers, addRepo, sweep, stop };
 }

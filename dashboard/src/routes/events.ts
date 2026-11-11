@@ -16,6 +16,8 @@ export interface EventDeps {
   homeDir: string;
   addRepo: (p: string) => RepoEntry | null;
   refresh: (repoKey: string) => void;
+  /** Re-reads the repo's git state soon: a task, stage or agent event may have committed. */
+  refreshGit?: (repoKey: string) => void;
   lastTask?: Map<string, HookEvent>;
   /** Re-reads a registered repo's `.factory/config.json` (and follows a changed `activeWorkstream`). */
   syncRepo?: (repoKey: string) => void;
@@ -58,6 +60,7 @@ export function handleEvent(body: unknown, deps: EventDeps): Response {
     case "stage": case "task": case "agent":
       if ((b.event === "task" || b.event === "agent") && b.task) deps.lastTask?.set(repoKey, b as HookEvent);
       deps.refresh(repoKey);
+      deps.refreshGit?.(repoKey);
       return ok();
     default: return ok();
   }

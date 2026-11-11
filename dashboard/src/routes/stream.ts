@@ -1,11 +1,12 @@
 import type { EventHub } from "../hub";
 import type { RepoRegistry } from "../repos";
-import type { LiveAgent, StreamEvent, WorkstreamSnapshot } from "../shared/types";
+import type { LiveAgent, RepoSnapshot, StreamEvent, WorkstreamSnapshot } from "../shared/types";
 
 export interface StreamDeps {
   hub: EventHub;
   repos: RepoRegistry;
   snapshot: (repoKey: string) => WorkstreamSnapshot | null;
+  repo: (repoKey: string) => RepoSnapshot | null;
   live: (repoKey: string) => LiveAgent[];
   heartbeatMs?: number;
 }
@@ -43,6 +44,8 @@ export function streamRoute(req: Request, deps: StreamDeps): Response {
       send(": connected\n\n");
       const snap = deps.snapshot(repoKey);
       if (snap) send(frame("snapshot", snap));
+      const repo = deps.repo(repoKey);
+      if (repo) send(frame("repo", repo));
       for (const agent of deps.live(repoKey)) send(frame("agent", { op: "start", agent }));
 
       unsub = deps.hub.subscribe(repoKey, (e: StreamEvent) => send(frame(e.type, e.data)));

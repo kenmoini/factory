@@ -1,20 +1,25 @@
 import type { AppDeps } from "../app";
 import type { RepoEntry } from "../repos";
 import type { Poller } from "../trilium/poller";
+import type { GitPoller } from "../git/poller";
+import type { GitReader } from "../git/reader";
 import { NOT_CONFIGURED, TOKEN_NOT_CONFIGURED, TriliumConfigError, TriliumError, type EtapiNote, type TriliumClient } from "../trilium/client";
 import { labelsOf } from "../trilium/mapper";
 import type { TranscriptTailer } from "../agents/tailer";
 import { runInWorkstream } from "../shared/agents";
-import type { HookEvent, TaskDetail, WorkstreamSnapshot } from "../shared/types";
+import type { HookEvent, RepoSnapshot, TaskDetail, WorkstreamSnapshot } from "../shared/types";
 import { handleEvent } from "./events";
 import { mockupsRoute } from "./mockups";
 import { streamRoute } from "./stream";
 
 interface Ctx {
-  deps: AppDeps; pollers: Map<string, Poller>; addRepo(path: string): RepoEntry | null;
+  deps: AppDeps; pollers: Map<string, Poller>; gitPollers: Map<string, GitPoller>; addRepo(path: string): RepoEntry | null;
   /** The repo's Trilium client; throws TriliumConfigError when the repo has none (see createApp). */
   clientFor(repoKey: string): TriliumClient;
   tailers: Map<string, TranscriptTailer>; lastTask: Map<string, HookEvent>; refresh(repoKey: string): void;
+  refreshGit(repoKey: string): void;
+  /** The repo's git reader, one per repo path. */
+  gitReader(repoKey: string): GitReader;
   syncRepo(repoKey: string): void; followWorkstream(repoKey: string, slug: string): void; now?: () => number;
   heartbeatMs?: number;
 }
@@ -36,7 +41,8 @@ const isJson = (req: Request) => (req.headers.get("content-type") ?? "").split("
 const unsupported = () => json({ error: "content type must be application/json" }, 415);
 
 export function createApi(ctx: Ctx) {
-  const { deps, pollers } = ctx;
+  const { deps, pollers, gitPollers, gitReader } = ctx;
+
   const startedAt = Date.now();
   let lastLogged = "";
 
@@ -202,7 +208,7 @@ export function createApi(ctx: Ctx) {
     try { body = await req.json(); } catch { return json({ error: "invalid JSON body" }, 400); }
     return handleEvent(body, {
       repos: deps.repos, registry: deps.registry, hub: deps.hub, tailers: ctx.tailers,
-      homeDir: deps.homeDir, addRepo: ctx.addRepo, refresh: ctx.refresh, lastTask: ctx.lastTask,
+      homeDir: deps.homeDir, addRepo: ctx.addRepo, refresh: ctx.refresh, refreshGit: ctx.refreshGit, lastTask: ctx.lastTask,
       syncRepo: ctx.syncRepo, followWorkstream: ctx.followWorkstream, now: ctx.now,
     });
   };
@@ -225,9 +231,42 @@ export function createApi(ctx: Ctx) {
     return json({ steps, finished: !!agent.finishedAt });
   };
 
+  const repoSnapshot: Handler = async (_req, url) => {
+    const entry = resolveRepo(url.searchParams.get("repo"));
+    const repoKey = entry?.repoPath;
+    const poller = repoKey ? gitPollers.get(repoKey) : undefined;
+    if (!entry || !repoKey || !poller) return json({ error: "unknown repo" }, 404);
+    let limit = 100;
+    const rawLimit = url.searchParams.get("limit");
+    if (rawLimit !== null) {
+      limit = Number(rawLimit);
+      if (rawLimit.trim() === "" || !Number.isInteger(limit) || limit < 1 || limit > 500) return json({ error: "limit must be 1-500" }, 400);
+    }
+    const branch = url.searchParams.get("branch") || undefined;
+    if (!poller.snapshot()) await poller.refresh();
+    if (branch && !poller.snapshot()?.branches.some((b) => b.name === branch)) return json({ error: "unknown branch" }, 400);
+    if (limit === 100 && !branch) {
+      const snap: RepoSnapshot = poller.snapshot() ?? {
+        repoPath: repoKey, defaultBranch: "main", branches: [], commits: [], limit: 100, truncated: false, fingerprint: "",
+        error: poller.lastError() ?? "no snapshot yet",
+      };
+      return json(snap);
+    }
+    return json(await gitReader(repoKey).snapshot({ limit, branch }));
+  };
+
+  const repoCommit: Handler = async (_req, url, [sha]) => {
+    const entry = resolveRepo(url.searchParams.get("repo"));
+    if (!entry || !gitPollers.has(entry.repoPath)) return json({ error: "unknown repo" }, 404);
+    if (!/^[0-9a-f]{7,40}$/.test(sha)) return json({ error: "invalid sha" }, 400);
+    const detail = await gitReader(entry.repoPath).detail(sha);
+    return detail ? json(detail) : json({ error: "unknown commit" }, 404);
+  };
+
   const stream: Handler = (req) => streamRoute(req, {
     hub: deps.hub, repos: deps.repos, heartbeatMs: ctx.heartbeatMs,
     snapshot: (k) => pollers.get(k)?.snapshot() ?? null,
+    repo: (k) => gitPollers.get(k)?.snapshot() ?? null,
     live: (k) => deps.registry.list(k).live,
   });
 
@@ -240,6 +279,8 @@ export function createApi(ctx: Ctx) {
     { method: "POST", re: /^\/api\/events$/, handler: events },
     { method: "GET", re: /^\/api\/agents$/, handler: agents },
     { method: "GET", re: /^\/api\/agents\/([^/]+)\/steps$/, handler: agentSteps },
+    { method: "GET", re: /^\/api\/repo$/, handler: repoSnapshot },
+    { method: "GET", re: /^\/api\/repo\/commits\/([^/]+)$/, handler: repoCommit },
     { method: "GET", re: /^\/api\/stream$/, handler: stream },
     { method: "GET", re: /^\/api\/tasks\/([^/]+)$/, handler: task },
   ];
