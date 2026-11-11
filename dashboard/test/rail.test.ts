@@ -28,6 +28,15 @@ describe("layoutRail", () => {
     expect(l.laneOf.m2).toBe(0); expect(l.laneOf.m1).toBe(0);
     expect(new Set([l.laneOf.b2, l.laneOf.x1]).size).toBe(2);
   });
+  test("sibling branches off the same tip take distinct lanes", () => {
+    const l = layoutRail([c("a1", ["P"], ["a"]), c("b1", ["P"], ["b"]), c("P", [], ["main"])], "main");
+    expect(l.laneOf).toEqual({ a1: 1, b1: 2, P: 0 });
+    expect(l.lanes).toBe(3);
+    expect(l.links).toEqual([
+      { fromRow: 0, toRow: 2, fromLane: 1, toLane: 0, kind: "fork" },
+      { fromRow: 1, toRow: 2, fromLane: 2, toLane: 0, kind: "fork" },
+    ]);
+  });
   test("a parent outside the list gets a stub link to the bottom edge", () => {
     const l = layoutRail([c("c2", ["c1"], ["main"])], "main");
     expect(l.links).toEqual([{ fromRow: 0, toRow: 1, fromLane: 0, toLane: 0, kind: "line" }]);

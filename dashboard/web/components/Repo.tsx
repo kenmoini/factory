@@ -107,9 +107,19 @@ function BranchChip({ name, colour, branch }: { name: string; colour: string; br
     <span className={`chip chip-branch${branch?.worktree ? " chip-wt" : ""}`} style={{ "--chip": colour } as CSSProperties}>
       {name}
       {dirty > 0 && <span aria-hidden="true">·{dirty}</span>}
-      {branch?.worktree && <span className="sr">{dirty > 0 ? `, worktree with ${dirty} uncommitted ${dirty === 1 ? "change" : "changes"}` : ", worktree"}</span>}
     </span>
   );
+}
+
+/** What the row's chips show that a screen reader should hear on focus: tip branches, worktree state, a live agent. */
+function rowNote(commit: RepoCommit, branches: Map<string, RepoBranch>, live: Set<string>): string {
+  const parts = commit.branches.map((name) => {
+    const dirty = branches.get(name)?.worktree?.dirty;
+    if (dirty === undefined) return `branch ${name}`;
+    return dirty > 0 ? `branch ${name}, worktree with ${dirty} uncommitted ${dirty === 1 ? "change" : "changes"}` : `branch ${name}, worktree`;
+  });
+  if (commit.branches.some((b) => live.has(b))) parts.push("an agent is working on this branch");
+  return parts.length > 0 ? `, ${parts.join("; ")}` : "";
 }
 
 interface RowProps {
@@ -119,11 +129,20 @@ interface RowProps {
 
 const Row = memo(function Row({ commit, colour, ago, selected, tabbable, branches, live, workstream }: RowProps) {
   const isLive = commit.branches.some((b) => live.has(b));
+  const note = rowNote(commit, branches, live);
   return (
-    <li role="option" aria-selected={selected}>
-      <button className="row-open" type="button" data-sha={commit.sha} tabIndex={tabbable ? 0 : -1} onClick={() => dispatch({ type: "select-commit", data: commit.sha })}>
+    <li className={selected ? "is-selected" : undefined}>
+      <button
+        className="row-open"
+        type="button"
+        data-sha={commit.sha}
+        aria-current={selected || undefined}
+        tabIndex={tabbable ? 0 : -1}
+        onClick={() => dispatch({ type: "select-commit", data: commit.sha })}
+      >
         <span className="row-sha">{commit.short}</span>
         <span className="row-subject">{commit.subject}</span>
+        {note && <span className="sr">{note}</span>}
       </button>
       <span className="row-chips">
         {commit.branches.map((name) => <BranchChip key={name} name={name} colour={colour} branch={branches.get(name)} />)}
@@ -131,7 +150,7 @@ const Row = memo(function Row({ commit, colour, ago, selected, tabbable, branche
         {commit.tasks.map((t) => (
           <span key={`${t.slug}/${t.taskId}`} className="chip chip-task">{t.slug === workstream ? t.taskId : `${t.slug}/${t.taskId}`}</span>
         ))}
-        {isLive && <><span className="pulse" aria-hidden="true" /><span className="sr">, an agent is working on this branch</span></>}
+        {isLive && <span className="pulse" aria-hidden="true" />}
       </span>
       <time className="row-time" dateTime={commit.authorTs}>{ago}</time>
     </li>
@@ -142,7 +161,7 @@ interface RowsProps {
   commits: RepoCommit[]; layout: RailLayout; branches: Map<string, RepoBranch>; live: Set<string>; selected?: string; workstream?: string;
 }
 
-/** The commit list: a listbox of rows; ArrowUp/ArrowDown move focus and the selection, Escape clears the selection. */
+/** The commit list (the board's card pattern: one button per row); ArrowUp/ArrowDown move focus and the selection, Escape clears it. */
 function Rows({ commits, layout, branches, live, selected, workstream }: RowsProps) {
   const now = useNow();
   const [focused, setFocused] = useState<string>();
@@ -170,7 +189,7 @@ function Rows({ commits, layout, branches, live, selected, workstream }: RowsPro
   };
 
   return (
-    <ul className="rail-rows" role="listbox" aria-label="Commits" onKeyDown={onKeyDown} onFocus={onFocus}>
+    <ul className="rail-rows" aria-label="Commits" onKeyDown={onKeyDown} onFocus={onFocus}>
       {commits.map((c) => (
         <Row
           key={c.sha}

@@ -18,7 +18,7 @@ const rowY = (row: number) => ROW_H / 2 + row * ROW_H;
  * bends into the parent's lane in the row below the child, then runs down. A stub (parent outside the list) runs to
  * the bottom edge.
  */
-function linkPath(l: RailLink, rows: number): string {
+export function linkPath(l: RailLink, rows: number): string {
   const x1 = laneX(l.fromLane), x2 = laneX(l.toLane), y1 = rowY(l.fromRow);
   const y2 = l.toRow === rows ? ROW_H * rows : rowY(l.toRow);
   if (l.kind === "line" || l.toRow === rows) return `M ${x1} ${y1} V ${y2}`;
@@ -38,19 +38,26 @@ interface RailProps {
   selected?: string;
 }
 
-/** The branch rails beside the commit rows: one row of `ROW_H` per commit, lanes `LANE_W` apart. */
+/** A link's stroke: the colour of the lane its vertical run occupies (the parent's lane for a merge, else the child's). */
+const linkColour = (l: RailLink) => laneColour(l.kind === "merge" ? l.toLane : l.fromLane);
+
+/**
+ * The branch rails beside the commit rows: one row of `ROW_H` per commit, lanes `LANE_W` apart. As in the mockup, the
+ * tip of a branch checked out in a worktree is filled with its rail colour (the default branch's tip stays hollow).
+ */
 export function Rail({ layout, commits, branches, defaultBranch, live, selected }: RailProps): JSX.Element {
   const { rows, links } = layout;
   const lanes = Math.max(1, layout.lanes);
   const width = RAIL_PAD * 2 + LANE_W * (lanes - 1);
   const height = ROW_H * rows.length;
   const dirty = new Set(branches.filter((b) => (b.worktree?.dirty ?? 0) > 0).map((b) => b.name));
+  const worktreeHeads = new Set(branches.filter((b) => b.worktree && !b.isDefault).map((b) => b.name));
 
   return (
     <svg className="rail-svg" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
       <g fill="none" strokeWidth={2} strokeLinecap="round">
         {links.map((l, i) => (
-          <path key={i} d={linkPath(l, rows.length)} stroke={laneColour(Math.max(l.fromLane, l.toLane))} />
+          <path key={i} d={linkPath(l, rows.length)} stroke={linkColour(l)} />
         ))}
       </g>
       {rows.map((row, i) => {
@@ -58,7 +65,8 @@ export function Rail({ layout, commits, branches, defaultBranch, live, selected 
         const colour = laneColour(row.lane);
         const cx = laneX(row.lane), cy = rowY(i);
         const isSelected = commit.sha === selected;
-        const isDefaultTip = commit.branches.includes(defaultBranch);
+        // a worktree branch still at the default branch's tip (no commits yet) leaves that tip hollow
+        const isWorktreeHead = commit.branches.some((b) => worktreeHeads.has(b)) && !commit.branches.includes(defaultBranch);
         return (
           <g key={commit.sha}>
             {commit.branches.some((b) => dirty.has(b)) && (
@@ -70,8 +78,8 @@ export function Rail({ layout, commits, branches, defaultBranch, live, selected 
             <circle
               cx={cx}
               cy={cy}
-              r={isSelected || commit.isMerge ? 6 : 5}
-              fill={isDefaultTip ? colour : "var(--floor)"}
+              r={isSelected || isWorktreeHead || commit.isMerge ? 6 : 5}
+              fill={isWorktreeHead ? colour : "var(--floor)"}
               stroke={isSelected ? "var(--ink)" : colour}
               strokeWidth={2}
             />

@@ -451,7 +451,7 @@ main { position: relative; min-height: 0; min-width: 0; }
   color: var(--ink-2);
 }
 .rail-rows li:hover { background: var(--bay); }
-.rail-rows li[aria-selected="true"] { background: var(--plate); box-shadow: inset 3px 0 0 var(--lamp); }
+.rail-rows li.is-selected { background: var(--plate); box-shadow: inset 3px 0 0 var(--lamp); }
 .rail-rows li:has(.row-open:focus-visible) { outline: 2px solid var(--ink); outline-offset: -2px; }
 /* the row's button covers the whole row (chips and time included), like the board's card-open */
 .row-open { display: flex; align-items: baseline; gap: 8px; min-width: 0; color: var(--ink); text-align: left; }
