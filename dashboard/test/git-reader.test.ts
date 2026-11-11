@@ -100,6 +100,17 @@ describe("GitReader", () => {
     expect(main.truncated).toBe(false);
     expect(main.commits.map((c) => c.subject)).not.toContain("feat(address): validation"); // only on checkout-flow
   });
+  test("a Task: line followed by a blank line and a Co-Authored-By: line still links the commit to its task", async () => {
+    const dir = tempDir("factory-git-coauthor-");
+    try {
+      git(dir, "init", "-q", "-b", "main");
+      const sha = commit(dir, "a.txt", "feat(cart): summary\n\nTask: checkout-flow/T-001\n\nCo-Authored-By: Claude <noreply@anthropic.com>");
+      expect(git(dir, "log", "-1", "--format=%(trailers:key=Task,valueonly)")).toBe("");  // git sees no Task trailer here
+      const snap = await new GitReader(dir).snapshot();
+      expect(snap.commits.map((c) => [c.sha, c.subject, c.tasks])).toEqual([[sha, "feat(cart): summary", [{ slug: "checkout-flow", taskId: "T-001" }]]]);
+      expect((await new GitReader(dir).detail(sha))!.body).toBe("Task: checkout-flow/T-001\n\nCo-Authored-By: Claude <noreply@anthropic.com>");
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
   test("detail: body, numstat files, totals, parents; unknown sha is null", async () => {
     const r = new GitReader(root);
     const head = (await r.snapshot()).commits[0];

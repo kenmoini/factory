@@ -115,7 +115,6 @@ export class GitReader {
     const full = v.out.trim();
     const [raw] = parseLog(await this.git(["log", "-n", "1", `--format=${LOG_FORMAT}`, full, "--"]));
     if (!raw) return null;
-    const body = (await this.git(["show", "-s", "--format=%b", full])).trim();
     const numstat = raw.parents.length
       ? await this.git(["diff", "--numstat", `${full}^1`, full, "--"])
       : await this.git(["diff-tree", "-r", "--root", "--numstat", "--no-commit-id", full]);
@@ -125,7 +124,7 @@ export class GitReader {
       const [h, subject = ""] = (await this.git(["log", "-n", "1", "--format=%H%x1f%s", p, "--"])).trim().split("\x1f");
       return { sha: h, short: h.slice(0, 7), subject };
     }));
-    return { commit: toRepoCommit(raw, tipsOf(await this.refs())), body, files, totals, parents };
+    return { commit: toRepoCommit(raw, tipsOf(await this.refs())), body: raw.body, files, totals, parents };
   }
 
   /** Refs, live worktrees with their dirty counts, and the fingerprint of both: no log, no ahead/behind. Never throws. */

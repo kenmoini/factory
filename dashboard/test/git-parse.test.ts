@@ -28,19 +28,20 @@ describe("parseWorktrees", () => {
 });
 
 describe("parseLog", () => {
-  test("records with parents, subject, author, date and Task trailers", () => {
-    const out = `${SHA_A}\x1f${SHA_B} ${SHA_T}\x1fMerge checkout-flow: T-002 Address form\x1fFactory\x1f2026-11-10T10:00:00+00:00\x1f\x1e\n${SHA_B}\x1f${SHA_T}\x1ffeat(address): validation\x1fbuilder\x1f2026-11-10T09:00:00+00:00\x1fcheckout-flow/T-002\x1dcheckout-flow/T-009\x1e\n`;
+  test("records with parents, subject, author, date, Task trailers and the body", () => {
+    const out = `${SHA_A}\x1f${SHA_B} ${SHA_T}\x1fMerge checkout-flow: T-002 Address form\x1fFactory\x1f2026-11-10T10:00:00+00:00\x1f\x1f\x1e\n${SHA_B}\x1f${SHA_T}\x1ffeat(address): validation\x1fbuilder\x1f2026-11-10T09:00:00+00:00\x1fcheckout-flow/T-002\x1dcheckout-flow/T-009\x1fChecks the form.\n\nTask: checkout-flow/T-002\nTask: checkout-flow/T-009\n\x1e\n`;
     expect(parseLog(out)).toEqual([
-      { sha: SHA_A, parents: [SHA_B, SHA_T], subject: "Merge checkout-flow: T-002 Address form", author: "Factory", authorTs: "2026-11-10T10:00:00+00:00", trailerTasks: [] },
-      { sha: SHA_B, parents: [SHA_T], subject: "feat(address): validation", author: "builder", authorTs: "2026-11-10T09:00:00+00:00", trailerTasks: ["checkout-flow/T-002", "checkout-flow/T-009"] },
+      { sha: SHA_A, parents: [SHA_B, SHA_T], subject: "Merge checkout-flow: T-002 Address form", author: "Factory", authorTs: "2026-11-10T10:00:00+00:00", trailerTasks: [], body: "" },
+      { sha: SHA_B, parents: [SHA_T], subject: "feat(address): validation", author: "builder", authorTs: "2026-11-10T09:00:00+00:00", trailerTasks: ["checkout-flow/T-002", "checkout-flow/T-009"],
+        body: "Checks the form.\n\nTask: checkout-flow/T-002\nTask: checkout-flow/T-009" },
     ]);
   });
   test("root commit has no parents; empty output gives no records", () => {
-    expect(parseLog(`${SHA_T}\x1f\x1finit\x1ft\x1f2026-11-10T08:00:00+00:00\x1f\x1e\n`)[0].parents).toEqual([]);
+    expect(parseLog(`${SHA_T}\x1f\x1finit\x1ft\x1f2026-11-10T08:00:00+00:00\x1f\x1f\x1e\n`)[0].parents).toEqual([]);
     expect(parseLog("")).toEqual([]);
   });
   test("LOG_FORMAT asks git for exactly those fields", () => {
-    expect(LOG_FORMAT).toBe("%H%x1f%P%x1f%s%x1f%an%x1f%aI%x1f%(trailers:key=Task,valueonly,separator=%x1d)%x1e");
+    expect(LOG_FORMAT).toBe("%H%x1f%P%x1f%s%x1f%an%x1f%aI%x1f%(trailers:key=Task,valueonly,separator=%x1d)%x1f%b%x1e");
   });
 });
 
@@ -50,6 +51,16 @@ describe("taskRefsOf", () => {
       .toEqual([{ slug: "checkout-flow", taskId: "T-002" }, { slug: "billing-api", taskId: "T-005" }]);
     expect(taskRefsOf("Merge checkout-flow: address", [])).toEqual([]);
     expect(taskRefsOf("feat: x", [])).toEqual([]);
+  });
+  test("a Task: line stranded above an attribution paragraph still counts; other body lines do not", () => {
+    // git reads trailers from the last paragraph only, so this message has no Task trailer for git
+    const body = "Task: checkout-flow/T-001\n\nCo-Authored-By: Claude <noreply@anthropic.com>";
+    expect(taskRefsOf("feat: a", [], body)).toEqual([{ slug: "checkout-flow", taskId: "T-001" }]);
+    expect(taskRefsOf("feat: a", ["checkout-flow/T-001"], `  ${body}`)).toEqual([{ slug: "checkout-flow", taskId: "T-001" }]); // trimmed, deduplicated
+    expect(taskRefsOf("feat: a", [], "Fixes Task: checkout-flow/T-002\nTask: checkout-flow/T-003 and more\nTask: T-004\nTask:checkout-flow/T-005")).toEqual([]);
+    const [raw] = parseLog(`${SHA_A}\x1f${SHA_B}\x1ffeat: a\x1ft\x1f2026-11-10T10:00:00+00:00\x1f\x1f${body}\n\x1e\n`);
+    expect(raw.trailerTasks).toEqual([]);
+    expect(toRepoCommit(raw, new Map()).tasks).toEqual([{ slug: "checkout-flow", taskId: "T-001" }]);
   });
 });
 
@@ -66,7 +77,7 @@ describe("parseStatusCount / parseNumstat / parseAheadBehind", () => {
 
 describe("toRepoCommit / fingerprintOf", () => {
   test("tips become chips; short sha; merge flag; tasks from subject and trailers", () => {
-    const raw = { sha: SHA_A, parents: [SHA_B, SHA_T], subject: "Merge checkout-flow: T-002 Address form", author: "Factory", authorTs: "2026-11-10T10:00:00+00:00", trailerTasks: [] };
+    const raw = { sha: SHA_A, parents: [SHA_B, SHA_T], subject: "Merge checkout-flow: T-002 Address form", author: "Factory", authorTs: "2026-11-10T10:00:00+00:00", trailerTasks: [], body: "" };
     const c = toRepoCommit(raw, new Map([[SHA_A, { branches: ["main"], tags: ["v0.3.0"] }]]));
     expect(c).toEqual({ sha: SHA_A, short: "aaaaaaa", parents: [SHA_B, SHA_T], subject: raw.subject, author: "Factory", authorTs: raw.authorTs, branches: ["main"], tags: ["v0.3.0"], tasks: [{ slug: "checkout-flow", taskId: "T-002" }], isMerge: true });
     expect(toRepoCommit({ ...raw, parents: [SHA_B] }, new Map()).branches).toEqual([]);

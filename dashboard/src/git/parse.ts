@@ -2,10 +2,11 @@ import type { CommitFile, RepoCommit, TaskRef } from "../shared/types";
 
 export interface Ref { name: string; sha: string; kind: "branch" | "tag" }
 export interface Worktree { path: string; head: string; branch?: string; detached: boolean; bare: boolean }
-export interface RawCommit { sha: string; parents: string[]; subject: string; author: string; authorTs: string; trailerTasks: string[] }
+/** One log record; `body` is the message after the subject, trimmed. */
+export interface RawCommit { sha: string; parents: string[]; subject: string; author: string; authorTs: string; trailerTasks: string[]; body: string }
 
-/** `git log --format` string whose output `parseLog` reads. */
-export const LOG_FORMAT = "%H%x1f%P%x1f%s%x1f%an%x1f%aI%x1f%(trailers:key=Task,valueonly,separator=%x1d)%x1e";
+/** `git log --format` string whose output `parseLog` reads; the body comes last. */
+export const LOG_FORMAT = "%H%x1f%P%x1f%s%x1f%an%x1f%aI%x1f%(trailers:key=Task,valueonly,separator=%x1d)%x1f%b%x1e";
 
 /** `for-each-ref --format='%(refname)%x1f%(objectname)%x1f%(*objectname)' refs/heads refs/tags`; annotated tags use the peeled commit. */
 export function parseRefs(out: string): Ref[] {
@@ -46,14 +47,21 @@ export function parseLog(out: string): RawCommit[] {
   for (const rec of out.split("\x1e")) {
     const text = rec.trim();
     if (!text) continue;
-    const [sha, parents = "", subject = "", author = "", authorTs = "", trailers = ""] = text.split("\x1f");
-    commits.push({ sha, parents: parents.split(" ").filter(Boolean), subject, author, authorTs, trailerTasks: trailers.split("\x1d").filter(Boolean) });
+    const [sha, parents = "", subject = "", author = "", authorTs = "", trailers = "", body = ""] = text.split("\x1f");
+    commits.push({ sha, parents: parents.split(" ").filter(Boolean), subject, author, authorTs, trailerTasks: trailers.split("\x1d").filter(Boolean), body: body.trim() });
   }
   return commits;
 }
 
-/** Task refs from `Task:` trailer values (`slug/T-001`) and a `Merge slug: T-001 …` subject, deduplicated, subject first. */
-export function taskRefsOf(subject: string, trailerTasks: string[]): TaskRef[] {
+/** A `Task:` trailer value: `<slug>/<taskId>`. */
+const TASK_REF = /^([a-z0-9][a-z0-9-]*)\/(T-\d{3,})$/;
+
+/**
+ * Task refs from `Task:` trailer values (`slug/T-001`), a `Merge slug: T-001 …` subject and `Task: slug/T-001` lines of
+ * the body, deduplicated, subject first. The body lines catch a trailer git does not read as one: git takes trailers
+ * from the last paragraph only, so a `Co-Authored-By:` paragraph after the `Task:` line hides it.
+ */
+export function taskRefsOf(subject: string, trailerTasks: string[], body = ""): TaskRef[] {
   const seen = new Set<string>();
   const refs: TaskRef[] = [];
   const add = (slug: string, taskId: string) => {
@@ -65,8 +73,13 @@ export function taskRefsOf(subject: string, trailerTasks: string[]): TaskRef[] {
   const m = /^Merge ([a-z0-9][a-z0-9-]*): (T-\d{3,})\b/.exec(subject);
   if (m) add(m[1], m[2]);
   for (const t of trailerTasks) {
-    const v = /^([a-z0-9][a-z0-9-]*)\/(T-\d{3,})$/.exec(t.trim());
+    const v = TASK_REF.exec(t.trim());
     if (v) add(v[1], v[2]);
+  }
+  for (const line of body.split("\n")) {
+    const v = /^Task: (.*)$/.exec(line.trim());
+    const r = v && TASK_REF.exec(v[1]);
+    if (r) add(r[1], r[2]);
   }
   return refs;
 }
@@ -102,7 +115,7 @@ export function toRepoCommit(raw: RawCommit, tips: Map<string, { branches: strin
   const tip = tips.get(raw.sha);
   return {
     sha: raw.sha, short: raw.sha.slice(0, 7), parents: raw.parents, subject: raw.subject, author: raw.author, authorTs: raw.authorTs,
-    branches: tip?.branches ?? [], tags: tip?.tags ?? [], tasks: taskRefsOf(raw.subject, raw.trailerTasks), isMerge: raw.parents.length > 1,
+    branches: tip?.branches ?? [], tags: tip?.tags ?? [], tasks: taskRefsOf(raw.subject, raw.trailerTasks, raw.body), isMerge: raw.parents.length > 1,
   };
 }
 
