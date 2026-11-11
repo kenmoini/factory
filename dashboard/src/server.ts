@@ -17,13 +17,19 @@ const registry = new AgentRegistry();
 /** No session or browser uses the server any more: stop serving, drop the pidfile while it still names us, and exit. */
 function exit(reason: string): void {
   console.log(`factory-dashboard: exiting (${reason})`);
-  app.stop();
-  server.stop(true);
-  const pidFile = join(config.configDir, "dashboard.pid");
   try {
-    if (readFileSync(pidFile, "utf8").trim() === String(process.pid)) rmSync(pidFile, { force: true });
-  } catch { /* no pidfile: not started by the daemon */ }
-  process.exit(0);
+    app.stop();
+    server.stop(true);
+  } catch (e) {
+    console.error(`factory-dashboard: stopping failed: ${e instanceof Error ? e.message : String(e)}`);
+  } finally {
+    // always, even when stopping threw: a pidfile left naming this pid would outlive the process
+    const pidFile = join(config.configDir, "dashboard.pid");
+    try {
+      if (readFileSync(pidFile, "utf8").trim() === String(process.pid)) rmSync(pidFile, { force: true });
+    } catch { /* no pidfile: not started by the daemon */ }
+    process.exit(0);
+  }
 }
 
 const app = createApp({ config, repos, hub, registry, homeDir: config.homeDir }, { html: index, onExit: exit });

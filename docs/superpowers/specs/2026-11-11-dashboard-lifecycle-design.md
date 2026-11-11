@@ -73,7 +73,7 @@ idempotent.
 `SessionTracker` keeps `sessions: Map<sessionId, { repoKey, transcriptPath?, pid?, lastSeen }>`, a `streams`
 count, `lastActivity` (initialised at construction) and `lastEnd` (unset until the first session end).
 
-- `seen(id, repoKey, { transcriptPath?, pid? })` upserts (new facts fill in, known ones are kept) and bumps
+- `seen(id, repoKey, { transcriptPath?, pid? })` upserts (a fact reported later replaces the known one) and bumps
   `lastSeen`; `end(id)` deletes, sets `lastEnd`, returns whether it was known; both and `activity()` set
   `lastActivity = now`.
 - `streamOpened()` / `streamClosed()` keep `streams` and count as activity.
@@ -147,8 +147,8 @@ count, `lastActivity` (initialised at construction) and `lastEnd` (unset until t
 ### 6. Documentation
 
 - README Dashboard section: the lifecycle (ends a minute after the last factory session unless a browser tab
-  is open; idle fallback; `FACTORY_GRACE_MS`, `FACTORY_IDLE_MS`, `FACTORY_AUTO_EXIT=0`), pidfile reconciliation,
-  `factory-settings`.
+  is open; idle fallback; `FACTORY_GRACE_MS`, `FACTORY_SESSION_IDLE_MS`, `FACTORY_AUTO_EXIT=0`), pidfile
+  reconciliation, `factory-settings`.
 - `dashboard/scripts/verify.md`: a lifecycle walk (start with `FACTORY_GRACE_MS=5000`, post `session-start`
   then `session-end` with `send-event.sh`, `status` reports stopped within half a minute, pidfile gone; with a
   browser tab open it stays).

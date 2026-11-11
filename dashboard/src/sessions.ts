@@ -43,15 +43,18 @@ export class SessionTracker {
     this.lastActivity = this.now();
   }
 
-  /** Upserts a session: new facts fill in, known facts are kept; counts as activity. */
+  /**
+   * Upserts a session: a fact reported later replaces the known one (a session resumed after a crash runs under a
+   * new pid), an omitted fact is kept; counts as activity.
+   */
   seen(id: string, repoKey: string, facts: SessionFacts = {}): SessionInfo {
     const now = this.now();
     const prev = this.sessions.get(id);
     const info: SessionInfo = {
       id,
       repoKey,
-      transcriptPath: prev?.transcriptPath ?? facts.transcriptPath,
-      pid: prev?.pid ?? facts.pid,
+      transcriptPath: facts.transcriptPath ?? prev?.transcriptPath,
+      pid: facts.pid ?? prev?.pid,
       lastSeen: now,
     };
     this.sessions.set(id, info);

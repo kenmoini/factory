@@ -14,13 +14,21 @@ function make(opts: { alive?: Set<number>; mtimes?: Record<string, number>; live
 }
 
 describe("SessionTracker", () => {
-  test("seen upserts, keeps known facts, bumps lastSeen", () => {
+  test("seen upserts, keeps facts a later call omits, bumps lastSeen", () => {
     const { tracker, tick } = make({ alive: new Set([7]) });
     tracker.seen("s1", "/r", { pid: 7 });
     tick(5_000);
     const s = tracker.seen("s1", "/r", { transcriptPath: "/t/s1.jsonl" });
     expect(tracker.count).toBe(1);
     expect(s).toMatchObject({ id: "s1", repoKey: "/r", pid: 7, transcriptPath: "/t/s1.jsonl", lastSeen: 1_005_000 });
+  });
+  test("seen: a pid or transcript reported later replaces the known one (a session resumed after a crash)", () => {
+    const { tracker } = make({ alive: new Set([9]) });
+    tracker.seen("s1", "/r", { pid: 7, transcriptPath: "/t/old.jsonl" }); // 7 crashed
+    const s = tracker.seen("s1", "/r", { pid: 9, transcriptPath: "/t/new.jsonl" });
+    expect(s).toMatchObject({ pid: 9, transcriptPath: "/t/new.jsonl" });
+    expect(tracker.reap()).toEqual([]);
+    expect(tracker.live(POLICY.sessionIdleMs).map((x) => x.id)).toEqual(["s1"]);
   });
   test("end: true for a known session, false for an unknown one; both arm the grace path", () => {
     const { tracker, tick } = make();
