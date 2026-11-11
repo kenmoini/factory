@@ -51,5 +51,5 @@ With the server running (steps 1-4) against a factory repo that has a worktree b
 7. With more commits than the limit, `Load more` extends the list.
 8. Pick a branch in the filter, then commit on that branch: the filter survives the new commit arriving (within
    the 5 s poll) and the new commit shows at the top.
-9. Register a non-git directory via `FACTORY_REPOS` and restart: its Repo tab shows "not a git repository" and
-   the board still works.
+9. Register a non-git directory via `FACTORY_REPOS` and restart (it needs a `.factory/config.json`, even `{}`, to
+   be registered): its Repo tab shows "not a git repository" and the board still works.
