@@ -19,13 +19,19 @@ describe("GitPoller", () => {
     expect(calls[0]).toEqual({ limit: 50 });
   });
   test("refresh is single-flight and start/stop drive the interval", async () => {
-    let n = 0; let release!: () => void;
-    const reader = { snapshot: () => new Promise<RepoSnapshot>((res) => { n++; release = () => res(snap(String(n))); }) };
+    let n = 0; let hold = true; let release!: () => void;
+    const reader = { snapshot: () => new Promise<RepoSnapshot>((res) => {
+      n++;
+      const fp = snap(String(n));
+      if (hold) release = () => res(fp); else res(fp);
+    }) };
     const p = new GitPoller("/r", { reader, hub: new EventHub() }, { intervalMs: 10 });
     const a = p.refresh(), b = p.refresh();
-    expect(n).toBe(1); release(); expect(await a).toBe(true); expect(await b).toBe(true);
-    p.start(); await Bun.sleep(35); p.stop(); const seen = n; await Bun.sleep(30);
-    expect(seen).toBeGreaterThanOrEqual(2); expect(n).toBe(seen);
-    release();
+    expect(n).toBe(1); hold = false; release(); expect(await a).toBe(true); expect(await b).toBe(true);
+    expect(n).toBe(1);
+    p.start(); await Bun.sleep(60);
+    expect(n).toBeGreaterThanOrEqual(4);
+    p.stop(); const seen = n; await Bun.sleep(40);
+    expect(n).toBe(seen);
   });
 });
