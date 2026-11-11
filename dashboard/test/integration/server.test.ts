@@ -727,6 +727,21 @@ describe("dashboard server", () => {
     t += 59_000; expect(app.checkExit()).toBeNull();
     t += 1_000; expect(app.checkExit()).toBe("no factory session or browser for 60s");
   });
+  test("lifecycle: closing one of two streams leaves the other counted", async () => {
+    const { app, base } = boot(tempHome(), { sweepMs: 3_600_000, heartbeatMs: 50 });
+    app.addRepo(repoDir);
+    const url = `${base}/api/stream?repo=${encodeURIComponent(repoDir)}`;
+    const [a, b] = [new AbortController(), new AbortController()];
+    for (const ac of [a, b]) await readUntil((await fetch(url, { signal: ac.signal })).body!.getReader(), (acc) => acc.includes(": connected"), 2000);
+    expect(app.sessions.streams).toBe(2);
+    a.abort();
+    for (let i = 0; i < 40 && app.sessions.streams > 1; i++) await Bun.sleep(50);
+    await Bun.sleep(100); // a second close of the same stream would land by now
+    expect(app.sessions.streams).toBe(1);
+    b.abort();
+    for (let i = 0; i < 40 && app.sessions.streams > 0; i++) await Bun.sleep(50);
+    expect(app.sessions.streams).toBe(0);
+  });
   test("lifecycle: POST /api/repos registers the caller's session; session-end stops that session's live agents", async () => {
     const home = tempHome();
     const { app, base } = boot(home, { sweepMs: 3_600_000 });
