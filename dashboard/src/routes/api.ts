@@ -2,12 +2,12 @@ import type { AppDeps } from "../app";
 import type { RepoEntry } from "../repos";
 import type { Poller } from "../trilium/poller";
 import type { GitPoller } from "../git/poller";
-import type { GitReader } from "../git/reader";
+import { GitError, type GitReader } from "../git/reader";
 import { NOT_CONFIGURED, TOKEN_NOT_CONFIGURED, TriliumConfigError, TriliumError, type EtapiNote, type TriliumClient } from "../trilium/client";
 import { labelsOf } from "../trilium/mapper";
 import type { TranscriptTailer } from "../agents/tailer";
 import { runInWorkstream } from "../shared/agents";
-import type { HookEvent, RepoSnapshot, TaskDetail, WorkstreamSnapshot } from "../shared/types";
+import type { CommitDetail, HookEvent, RepoSnapshot, TaskDetail, WorkstreamSnapshot } from "../shared/types";
 import { handleEvent } from "./events";
 import { mockupsRoute } from "./mockups";
 import { streamRoute } from "./stream";
@@ -259,7 +259,12 @@ export function createApi(ctx: Ctx) {
     const entry = resolveRepo(url.searchParams.get("repo"));
     if (!entry || !gitPollers.has(entry.repoPath)) return json({ error: "unknown repo" }, 404);
     if (!/^[0-9a-f]{7,40}$/.test(sha)) return json({ error: "invalid sha" }, 400);
-    const detail = await gitReader(entry.repoPath).detail(sha);
+    let detail: CommitDetail | null;
+    try { detail = await gitReader(entry.repoPath).detail(sha); } catch (e) {
+      if (!(e instanceof GitError)) throw e;
+      console.error(`factory-dashboard: git failed (exit ${e.code})`); // never e.message: it is git's stderr
+      return json({ error: "git failed" }, 500);
+    }
     return detail ? json(detail) : json({ error: "unknown commit" }, 404);
   };
 

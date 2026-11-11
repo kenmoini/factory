@@ -753,6 +753,78 @@ describe("dashboard server", () => {
     expect(on.tls.every((t) => JSON.stringify(t) === JSON.stringify({ rejectUnauthorized: true }))).toBe(true);
   });
 
+  describe("repo routes", () => {
+    // every commit gets its own increasing timestamp, so --date-order is deterministic
+    let tick = 0;
+    const git = (cwd: string, ...args: string[]) => gitAt(undefined, cwd, ...args);
+    const gitAt = (date: string | undefined, cwd: string, ...args: string[]) => {
+      const ts = date ?? `2026-11-10T10:${String(tick++).padStart(2, "0")}:00Z`;
+      const r = Bun.spawnSync(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args],
+        { cwd, stdout: "pipe", stderr: "pipe", env: { ...process.env, GIT_AUTHOR_DATE: ts, GIT_COMMITTER_DATE: ts } });
+      if (r.exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr.toString()}`);
+      return r.stdout.toString().trim();
+    };
+    const commit = (cwd: string, file: string, msg: string) => { writeFileSync(join(cwd, file), `${msg}\n`); git(cwd, "add", "-A"); git(cwd, "commit", "-q", "-m", msg); };
+    beforeAll(() => {
+      git(repoDir, "init", "-q", "-b", "main");
+      commit(repoDir, "a.txt", "chore: enforce standards");
+      const wt = join(repoDir, ".factory/worktrees/checkout-flow");
+      git(repoDir, "worktree", "add", "-q", "-b", "checkout-flow", wt);
+      commit(wt, "b.txt", "feat(cart): summary\n\nTask: checkout-flow/T-001");
+      commit(wt, "c.txt", "test(cart): totals\n\nTask: checkout-flow/T-001");
+      git(repoDir, "merge", "--no-ff", "-q", "-m", "Merge checkout-flow: T-001 Cart summary", "checkout-flow");
+      commit(wt, "d.txt", "feat(address): validation\n\nTask: checkout-flow/T-002");
+    });
+
+    test("/api/repo serves the registered repo's snapshot; validates limit and branch; unknown repo is 404", async () => {
+      const { base, app } = boot(); app.addRepo(repoDir); const q = encodeURIComponent(repoDir);
+      expect((await fetch(`${base}/api/repo?repo=nope`)).status).toBe(404);
+      const snap = (await (await fetch(`${base}/api/repo?repo=${q}`)).json()) as any;
+      expect(snap.defaultBranch).toBe("main");
+      expect(snap.branches.map((b: any) => b.name).sort()).toEqual(["checkout-flow", "main"]);
+      expect(snap.commits.length).toBeGreaterThanOrEqual(4);
+      expect((await fetch(`${base}/api/repo?repo=${q}&limit=0`)).status).toBe(400);
+      expect((await fetch(`${base}/api/repo?repo=${q}&limit=501`)).status).toBe(400);
+      expect((await fetch(`${base}/api/repo?repo=${q}&branch=nope`)).status).toBe(400);
+      const filtered = (await (await fetch(`${base}/api/repo?repo=${q}&branch=checkout-flow&limit=2`)).json()) as any;
+      expect(filtered.commits.length).toBe(2); expect(filtered.truncated).toBe(true); expect(filtered.limit).toBe(2);
+    });
+    test("/api/repo/commits/:sha serves detail, rejects bad shas, 404s unknown ones", async () => {
+      const { base, app } = boot(); app.addRepo(repoDir); const q = encodeURIComponent(repoDir);
+      const snap = (await (await fetch(`${base}/api/repo?repo=${q}`)).json()) as any;
+      const sha = snap.commits[0].sha;
+      const d = (await (await fetch(`${base}/api/repo/commits/${sha}?repo=${q}`)).json()) as any;
+      expect(d.commit.sha).toBe(sha); expect(Array.isArray(d.files)).toBe(true); expect(d.totals.files).toBe(d.files.length);
+      expect((await fetch(`${base}/api/repo/commits/zzz?repo=${q}`)).status).toBe(400);
+      expect((await fetch(`${base}/api/repo/commits/${"0".repeat(40)}?repo=${q}`)).status).toBe(404);
+      expect((await fetch(`${base}/api/repo/commits/${sha}?repo=nope`)).status).toBe(404);
+    });
+    test("a git failure on a commit lookup is a 500 that logs no git output", async () => {
+      const { base, app } = boot(); const plain = tempRepo({}); app.addRepo(plain);
+      const r = await fetch(`${base}/api/repo/commits/abcdef0?repo=${encodeURIComponent(plain)}`);
+      expect(r.status).toBe(500);
+      expect(await r.json()).toEqual({ error: "git failed" });
+      for (const line of logged) { expect(line).not.toContain("fatal:"); expect(line).not.toContain("not a git repository"); }
+    });
+    test("the stream sends a repo frame on connect and after a task event that changed git", async () => {
+      const { base, app } = boot(); app.addRepo(repoDir); const q = encodeURIComponent(repoDir);
+      await app.gitPollers.get(repoDir)!.refresh();
+      const ac = new AbortController();
+      const res = await fetch(`${base}/api/stream?repo=${q}`, { signal: ac.signal });
+      const reader = res.body!.getReader();
+      await readUntil(reader, (a) => a.includes("event: repo"), 2000);
+      // a new commit on main, then the hook's task event: the poller refreshes and pushes
+      writeFileSync(join(repoDir, "z.txt"), "z\n");
+      gitAt(undefined, repoDir, "add", "-A");
+      gitAt("2027-01-01T00:00:00Z", repoDir, "commit", "-q", "-m", "chore: z"); // newer than every fixture commit
+      await postJson(`${base}/api/events`, { event: "task", ts: "x", project: repoDir, task: "T-001", status: "done", payload: {} });
+      const acc = await readUntil(reader, (a) => a.includes("event: repo"), 3000);
+      ac.abort();
+      const last = acc.split("\n\n").filter((f) => f.startsWith("event: repo")).at(-1)!;
+      expect(JSON.parse(last.slice(last.indexOf("data: ") + 6)).commits[0].subject).toBe("chore: z");
+    });
+  });
+
   test("token canary: no response body or header, and no console line of this suite, carries the ETAPI token", async () => {
     const home = tempHome();
     placeTranscript(home, cwdSlug(repoDir), "s1", "k1");
@@ -808,69 +880,5 @@ describe("dashboard server", () => {
       expect(line).not.toContain(TOKEN);
       expect(line).not.toContain(WRONG);
     }
-  });
-});
-
-describe("repo routes", () => {
-  // every commit gets its own increasing timestamp, so --date-order is deterministic
-  let tick = 0;
-  const git = (cwd: string, ...args: string[]) => {
-    const ts = `2026-11-10T10:${String(tick++).padStart(2, "0")}:00Z`;
-    const r = Bun.spawnSync(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args],
-      { cwd, stdout: "pipe", stderr: "pipe", env: { ...process.env, GIT_AUTHOR_DATE: ts, GIT_COMMITTER_DATE: ts } });
-    if (r.exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr.toString()}`);
-    return r.stdout.toString().trim();
-  };
-  const commit = (cwd: string, file: string, msg: string) => { writeFileSync(join(cwd, file), `${msg}\n`); git(cwd, "add", "-A"); git(cwd, "commit", "-q", "-m", msg); };
-  beforeAll(() => {
-    git(repoDir, "init", "-q", "-b", "main");
-    commit(repoDir, "a.txt", "chore: enforce standards");
-    const wt = join(repoDir, ".factory/worktrees/checkout-flow");
-    git(repoDir, "worktree", "add", "-q", "-b", "checkout-flow", wt);
-    commit(wt, "b.txt", "feat(cart): summary\n\nTask: checkout-flow/T-001");
-    commit(wt, "c.txt", "test(cart): totals\n\nTask: checkout-flow/T-001");
-    git(repoDir, "merge", "--no-ff", "-q", "-m", "Merge checkout-flow: T-001 Cart summary", "checkout-flow");
-    commit(wt, "d.txt", "feat(address): validation\n\nTask: checkout-flow/T-002");
-  });
-
-  test("/api/repo serves the registered repo's snapshot; validates limit and branch; unknown repo is 404", async () => {
-    const { base, app } = boot(); app.addRepo(repoDir); const q = encodeURIComponent(repoDir);
-    expect((await fetch(`${base}/api/repo?repo=nope`)).status).toBe(404);
-    const snap = (await (await fetch(`${base}/api/repo?repo=${q}`)).json()) as any;
-    expect(snap.defaultBranch).toBe("main");
-    expect(snap.branches.map((b: any) => b.name).sort()).toEqual(["checkout-flow", "main"]);
-    expect(snap.commits.length).toBeGreaterThanOrEqual(4);
-    expect((await fetch(`${base}/api/repo?repo=${q}&limit=0`)).status).toBe(400);
-    expect((await fetch(`${base}/api/repo?repo=${q}&limit=501`)).status).toBe(400);
-    expect((await fetch(`${base}/api/repo?repo=${q}&branch=nope`)).status).toBe(400);
-    const filtered = (await (await fetch(`${base}/api/repo?repo=${q}&branch=checkout-flow&limit=2`)).json()) as any;
-    expect(filtered.commits.length).toBe(2); expect(filtered.truncated).toBe(true); expect(filtered.limit).toBe(2);
-  });
-  test("/api/repo/commits/:sha serves detail, rejects bad shas, 404s unknown ones", async () => {
-    const { base, app } = boot(); app.addRepo(repoDir); const q = encodeURIComponent(repoDir);
-    const snap = (await (await fetch(`${base}/api/repo?repo=${q}`)).json()) as any;
-    const sha = snap.commits[0].sha;
-    const d = (await (await fetch(`${base}/api/repo/commits/${sha}?repo=${q}`)).json()) as any;
-    expect(d.commit.sha).toBe(sha); expect(Array.isArray(d.files)).toBe(true); expect(d.totals.files).toBe(d.files.length);
-    expect((await fetch(`${base}/api/repo/commits/zzz?repo=${q}`)).status).toBe(400);
-    expect((await fetch(`${base}/api/repo/commits/${"0".repeat(40)}?repo=${q}`)).status).toBe(404);
-    expect((await fetch(`${base}/api/repo/commits/${sha}?repo=nope`)).status).toBe(404);
-  });
-  test("the stream sends a repo frame on connect and after a task event that changed git", async () => {
-    const { base, app } = boot(); app.addRepo(repoDir); const q = encodeURIComponent(repoDir);
-    await app.gitPollers.get(repoDir)!.refresh();
-    const ac = new AbortController();
-    const res = await fetch(`${base}/api/stream?repo=${q}`, { signal: ac.signal });
-    const reader = res.body!.getReader();
-    await readUntil(reader, (a) => a.includes("event: repo"), 2000);
-    // a new commit on main, then the hook's task event: the poller refreshes and pushes
-    writeFileSync(join(repoDir, "z.txt"), "z\n");
-    Bun.spawnSync(["git", "-c", "user.name=t", "-c", "user.email=t@t", "add", "-A"], { cwd: repoDir });
-    Bun.spawnSync(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "chore: z"], { cwd: repoDir, env: { ...process.env, GIT_AUTHOR_DATE: "2027-01-01T00:00:00Z", GIT_COMMITTER_DATE: "2027-01-01T00:00:00Z" } }); // newer than every fixture commit
-    await postJson(`${base}/api/events`, { event: "task", ts: "x", project: repoDir, task: "T-001", status: "done", payload: {} });
-    const acc = await readUntil(reader, (a) => a.includes("event: repo"), 3000);
-    ac.abort();
-    const last = acc.split("\n\n").filter((f) => f.startsWith("event: repo")).at(-1)!;
-    expect(JSON.parse(last.slice(last.indexOf("data: ") + 6)).commits[0].subject).toBe("chore: z");
   });
 });
