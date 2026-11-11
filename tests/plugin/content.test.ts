@@ -248,3 +248,11 @@ test("graph: no Skill-tool invocation of graphify; graph stage builds with graph
   if (!read("skills/run/SKILL.md").includes("never the user-level `graphify` skill")) problems.push("SKILL.md: does not forbid the graphify skill");
   expect(problems, problems.join("\n")).toEqual([]);
 });
+
+// ---------- rule 13: builder commits carry the task trailer the dashboard joins on ----------
+test("builder: commit messages end with the Task: <slug>/<taskId> trailer", () => {
+  const problems: string[] = [];
+  if (!read("agents/builder.md").includes("Task: <slug>/<taskId>")) problems.push("agents/builder.md: no Task trailer rule");
+  if (!read("skills/run/references/agent-protocol.md").includes("Task: <slug>/<taskId>")) problems.push("agent-protocol.md: git guardrail lacks the trailer");
+  expect(problems, problems.join("\n")).toEqual([]);
+});

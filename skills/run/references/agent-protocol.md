@@ -151,7 +151,7 @@ version verified on the web, or `""`.
   assumption you made in your summary.
 - Write only the paths in `Write:`; read-only agents create no files at all (not even scratch files in the repo).
 - Git: only the builder writes git state, and only on branch `<slug>` inside the worktree, with conventional commit
-  messages. Nobody checks out, merges into, rebases, resets or pushes `main`; no `git push`, no `--force`, no `git clean`.
+  messages ending in a `Task: <slug>/<taskId>` trailer. Nobody checks out, merges into, rebases, resets or pushes `main`; no `git push`, no `--force`, no `git clean`.
 - Bash for read-only agents means commands that change no file, no git state, no packages and no network
   (`git log|diff|show|status`, `ls`, `cat`, `graphify query|explain|path`).
 - Dependencies: only the builder may add or install dependencies, and only those the task spec or Standards name,

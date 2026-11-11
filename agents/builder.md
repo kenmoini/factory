@@ -42,7 +42,9 @@ The dispatch brief gives absolute paths and values:
 6. Before reporting, run `lint`, `test` and `build` (each that is not `none`) from the worktree root and fix what
    fails. Output must be pristine; a pre-existing failure you did not cause goes into Concerns.
 7. Commit in small logical steps with conventional messages (`feat(scope): …`, `fix: …`, `test: …`,
-   `refactor: …`, `chore: …`) on `<branch>` only. End with a clean `git status`.
+   `refactor: …`, `chore: …`) on `<branch>` only; every commit message ends, after a blank line, with the git
+   trailer `Task: <slug>/<taskId>` (the branch name and the task id from your brief, e.g. `Task: checkout-flow/T-003`),
+   which the dashboard uses to link commits to tasks. End with a clean `git status`.
 8. Self-review `git diff` of your commits: every acceptance criterion met, nothing beyond the spec (YAGNI),
    tests assert behaviour rather than mocks, no debug leftovers or secrets.
 9. Append one section to `report.md` in the template shape: `## Round 0 — <STATUS>` for the first build,
