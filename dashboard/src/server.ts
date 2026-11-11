@@ -1,3 +1,5 @@
+import { readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { AgentRegistry } from "./agents/registry";
 import { createApp } from "./app";
 import { loadConfig } from "./config";
@@ -12,7 +14,19 @@ const repos = new RepoRegistry({ trilium: { env: process.env, homeDir: config.ho
 const hub = new EventHub();
 const registry = new AgentRegistry();
 
-const app = createApp({ config, repos, hub, registry, homeDir: config.homeDir }, { html: index });
+/** No session or browser uses the server any more: stop serving, drop the pidfile while it still names us, and exit. */
+function exit(reason: string): void {
+  console.log(`factory-dashboard: exiting (${reason})`);
+  app.stop();
+  server.stop(true);
+  const pidFile = join(config.configDir, "dashboard.pid");
+  try {
+    if (readFileSync(pidFile, "utf8").trim() === String(process.pid)) rmSync(pidFile, { force: true });
+  } catch { /* no pidfile: not started by the daemon */ }
+  process.exit(0);
+}
+
+const app = createApp({ config, repos, hub, registry, homeDir: config.homeDir }, { html: index, onExit: exit });
 for (const p of (process.env.FACTORY_REPOS ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
   if (!app.addRepo(p)) console.warn(`factory-dashboard: no .factory/config.json in ${p}`);
 }

@@ -5,8 +5,13 @@ import { join } from "node:path";
  * Trilium credentials are per repo (its `.mcp.json`, see trilium/mcp-config.ts). `triliumUrl` / `etapiToken` are only
  * a global fallback for repos without one: FACTORY_TRILIUM_URL / FACTORY_ETAPI_TOKEN, or legacy `config.json` keys.
  * `tlsVerify`: FACTORY_TLS_VERIFY=1; off by default, so a self-signed Trilium certificate is accepted.
+ * Lifecycle (see sessions.ts): `graceMs` (FACTORY_GRACE_MS) after the last session ends or browser closes, or
+ * `sessionIdleMs` (FACTORY_SESSION_IDLE_MS) of silence, the server exits; FACTORY_AUTO_EXIT=0 keeps it running.
  */
-export interface DashboardConfig { port: number; pollMs: number; gitPollMs: number; configDir: string; homeDir: string; tlsVerify: boolean; triliumUrl?: string; etapiToken?: string }
+export interface DashboardConfig {
+  port: number; pollMs: number; gitPollMs: number; configDir: string; homeDir: string; tlsVerify: boolean;
+  graceMs: number; sessionIdleMs: number; autoExit: boolean; triliumUrl?: string; etapiToken?: string;
+}
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): DashboardConfig {
   const homeDir = env.HOME ?? "";
@@ -30,6 +35,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): DashboardConfi
     configDir,
     homeDir,
     tlsVerify: env.FACTORY_TLS_VERIFY === "1",
+    graceMs: num(env.FACTORY_GRACE_MS, 60_000),
+    sessionIdleMs: num(env.FACTORY_SESSION_IDLE_MS, 7_200_000),
+    autoExit: env.FACTORY_AUTO_EXIT !== "0",
   };
   if (url) config.triliumUrl = url.replace(/\/+$/, "");
   if (token) config.etapiToken = token;

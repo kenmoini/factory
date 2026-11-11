@@ -5,6 +5,7 @@ import type { AgentRegistry } from "../agents/registry";
 import { TranscriptTailer } from "../agents/tailer";
 import type { EventHub } from "../hub";
 import type { RepoEntry, RepoRegistry } from "../repos";
+import type { SessionTracker } from "../sessions";
 import { taskNoteIdOf } from "../shared/agents";
 import type { HookEvent, LiveAgent } from "../shared/types";
 
@@ -23,12 +24,16 @@ export interface EventDeps {
   syncRepo?: (repoKey: string) => void;
   /** Points the repo's poller at the envelope's `workstream`, unless the user picked one. */
   followWorkstream?: (repoKey: string, slug: string) => void;
+  /** Learns the sessions that post events, and that every event is activity (see sessions.ts). */
+  sessions?: SessionTracker;
   now?: () => number;
 }
 
 const ok = () => new Response(null, { status: 204 });
 const str = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined);
 const SAFE = /^[A-Za-z0-9_-]+$/;
+/** `v` as a process id: a positive integer, else undefined. */
+export const pidOf = (v: unknown): number | undefined => (Number.isInteger(v) && (v as number) > 0 ? (v as number) : undefined);
 
 /** `path` resolved, if it lies under `~/.claude/projects` (where Claude Code keeps transcripts); otherwise undefined. */
 function underProjects(homeDir: string, path: string | undefined): string | undefined {
@@ -49,12 +54,25 @@ export function handleEvent(body: unknown, deps: EventDeps): Response {
   const ws = str(b.workstream);
   if (ws) deps.followWorkstream?.(repoKey, ws);
   const payload = (b.payload && typeof b.payload === "object" ? b.payload : {}) as Record<string, unknown>;
+  const sessionId = str(payload.session_id) ?? str(b.session);
+  if (sessionId) {
+    deps.sessions?.seen(sessionId, repoKey, { transcriptPath: underProjects(deps.homeDir, str(payload.transcript_path)), pid: pidOf(b.pid) });
+  }
+  deps.sessions?.activity();
 
   switch (b.event) {
     case "subagent-start": return onStart(repoKey, payload, deps);
     case "subagent-stop": return onStop(repoKey, payload, deps);
     case "session-start":
       endOtherSessions(repoKey, payload, deps);
+      deps.refresh(repoKey);
+      return ok();
+    case "session-end":
+      if (sessionId) {
+        // the session's subagents will never send their stop
+        for (const a of deps.registry.list(repoKey).live) if (a.sessionId === sessionId) stopAgent(a.agentId, deps);
+        deps.sessions?.end(sessionId);
+      }
       deps.refresh(repoKey);
       return ok();
     case "stage": case "task": case "agent":

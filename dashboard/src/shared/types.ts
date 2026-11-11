@@ -18,7 +18,8 @@ export interface Step { seq: number; ts: string; kind: "text"|"thinking"|"tool"|
 export interface WorkstreamSnapshot { project: Project; workstream: Workstream|null; workstreams: Workstream[]; milestones: Milestone[]; tasks: Task[]; docs: Doc[]; reviews: Review[]; runs: AgentRun[]; live: LiveAgent[]; fingerprint: string }
 /** `GET /api/tasks/:id`: the task with its spec and approval note bodies, and its reviews and runs from the snapshot. */
 export interface TaskDetail { task: Task; spec?: { content: string; format: "html"|"markdown" }; reviews: Review[]; approval?: { content: string }; runs: AgentRun[] }
-export interface HookEvent { event: string; ts: string; project: string; stage?: string; status?: string; task?: string; workstream?: string; payload: Record<string, unknown> }
+/** `session` and `pid` name the Claude Code session that sent the event and its process, when the hook knows them. */
+export interface HookEvent { event: string; ts: string; project: string; stage?: string; status?: string; task?: string; workstream?: string; session?: string; pid?: number; payload: Record<string, unknown> }
 /** A branch's worktree checkout: `dirty` is the number of changed or untracked entries. */
 export interface RepoWorktree { path: string; dirty: number }
 /** `ahead`/`behind` are counts against the default branch; `worktree` is set when the branch is checked out somewhere. */

@@ -7,8 +7,9 @@ import { NOT_CONFIGURED, TOKEN_NOT_CONFIGURED, TriliumConfigError, TriliumError,
 import { labelsOf } from "../trilium/mapper";
 import type { TranscriptTailer } from "../agents/tailer";
 import { runInWorkstream } from "../shared/agents";
+import type { SessionTracker } from "../sessions";
 import type { CommitDetail, HookEvent, TaskDetail, WorkstreamSnapshot } from "../shared/types";
-import { handleEvent } from "./events";
+import { handleEvent, pidOf } from "./events";
 import { mockupsRoute } from "./mockups";
 import { streamRoute } from "./stream";
 
@@ -20,7 +21,10 @@ interface Ctx {
   refreshGit(repoKey: string): void;
   /** The repo's git reader, one per repo path. */
   gitReader(repoKey: string): GitReader;
-  syncRepo(repoKey: string): void; followWorkstream(repoKey: string, slug: string): void; now?: () => number;
+  syncRepo(repoKey: string): void; followWorkstream(repoKey: string, slug: string): void;
+  /** The Claude sessions and browser streams using the server. */
+  sessions: SessionTracker;
+  now?: () => number;
   heartbeatMs?: number;
 }
 /** What `/api/docs/:id` needs to answer before fetching the body: title and format are fetched when unknown (reviews). */
@@ -69,7 +73,11 @@ export function createApi(ctx: Ctx) {
       trilium.ok = false;
       trilium.error = "no poller has refreshed yet";
     }
-    return json({ ok: true, pid: process.pid, uptimeSec: Math.round((Date.now() - startedAt) / 1000), version: "0.1.0", trilium, repos: deps.repos.list().map((r) => r.repoPath) });
+    return json({
+      ok: true, pid: process.pid, uptimeSec: Math.round((Date.now() - startedAt) / 1000), version: "0.1.0", trilium,
+      repos: deps.repos.list().map((r) => r.repoPath),
+      sessions: ctx.sessions.count, streams: ctx.sessions.streams, autoExit: deps.config.autoExit,
+    });
   };
 
   const listRepos: Handler = () => {
@@ -77,13 +85,17 @@ export function createApi(ctx: Ctx) {
     return json({ repos: deps.repos.list().map(withWorkstreams) });
   };
 
+  /** Body `{ path, session?, pid? }`: a session that registers the repo is using the server (see sessions.ts). */
   const addRepoRoute: Handler = async (req) => {
     if (!isJson(req)) return unsupported();
-    let path: unknown;
-    try { path = ((await req.json()) as { path?: unknown })?.path; } catch { return json({ error: "invalid JSON body" }, 400); }
+    let body: { path?: unknown; session?: unknown; pid?: unknown } | null;
+    try { body = await req.json(); } catch { return json({ error: "invalid JSON body" }, 400); }
+    const path = body?.path;
     if (typeof path !== "string" || !path) return json({ error: "path required" }, 400);
     const entry = ctx.addRepo(path);
-    return entry ? json(withWorkstreams(entry), 201) : json({ error: "no .factory/config.json" }, 404);
+    if (!entry) return json({ error: "no .factory/config.json" }, 404);
+    if (typeof body?.session === "string" && body.session) ctx.sessions.seen(body.session, entry.repoPath, { pid: pidOf(body.pid) });
+    return json(withWorkstreams(entry), 201);
   };
 
   const state: Handler = async (_req, url) => {
@@ -209,7 +221,7 @@ export function createApi(ctx: Ctx) {
     return handleEvent(body, {
       repos: deps.repos, registry: deps.registry, hub: deps.hub, tailers: ctx.tailers,
       homeDir: deps.homeDir, addRepo: ctx.addRepo, refresh: ctx.refresh, refreshGit: ctx.refreshGit, lastTask: ctx.lastTask,
-      syncRepo: ctx.syncRepo, followWorkstream: ctx.followWorkstream, now: ctx.now,
+      syncRepo: ctx.syncRepo, followWorkstream: ctx.followWorkstream, sessions: ctx.sessions, now: ctx.now,
     });
   };
 
@@ -267,6 +279,8 @@ export function createApi(ctx: Ctx) {
     snapshot: (k) => pollers.get(k)?.snapshot() ?? null,
     repo: (k) => gitPollers.get(k)?.snapshot() ?? null,
     live: (k) => deps.registry.list(k).live,
+    onOpen: () => ctx.sessions.streamOpened(),
+    onClose: () => ctx.sessions.streamClosed(),
   });
 
   const routes: { method: string; re: RegExp; handler: Handler }[] = [

@@ -9,6 +9,10 @@ export interface StreamDeps {
   repo: (repoKey: string) => RepoSnapshot | null;
   live: (repoKey: string) => LiveAgent[];
   heartbeatMs?: number;
+  /** Called once when the stream opens, before its first frame. */
+  onOpen?: () => void;
+  /** Called once when the stream closes, whether the client went away or a write failed. */
+  onClose?: () => void;
 }
 
 const frame = (type: string, data: unknown) => `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -38,9 +42,11 @@ export function streamRoute(req: Request, deps: StreamDeps): Response {
         if (timer) clearInterval(timer);
         req.signal.removeEventListener("abort", onAbort);
         try { controller.close(); } catch { /* already closed */ }
+        deps.onClose?.();
       };
       const onAbort = () => cleanup();
 
+      deps.onOpen?.();
       send(": connected\n\n");
       const snap = deps.snapshot(repoKey);
       if (snap) send(frame("snapshot", snap));

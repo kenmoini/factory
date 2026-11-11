@@ -130,8 +130,15 @@ async function readUntil(reader: ReadableStreamDefaultReader<Uint8Array>, pred: 
  * Each repo's Trilium URL and token come from its `.mcp.json` (`env` stands in for FACTORY_TRILIUM_URL /
  * FACTORY_ETAPI_TOKEN; the process env is never read). `tls` records the TLS option of every Trilium request.
  */
-function boot(homeDir = "", opts: { heartbeatMs?: number; now?: () => number; sweepMs?: number } = {}, registry = new AgentRegistry(), env: Record<string, string> = {}, tlsVerify = false) {
-  const config: DashboardConfig = { port: 0, pollMs: 60000, gitPollMs: 60000, configDir: "", homeDir, tlsVerify };
+function boot(
+  homeDir = "",
+  opts: { heartbeatMs?: number; now?: () => number; sweepMs?: number; onExit?: (reason: string) => void } = {},
+  registry = new AgentRegistry(),
+  env: Record<string, string> = {},
+  tlsVerify = false,
+  autoExit = true,
+) {
+  const config: DashboardConfig = { port: 0, pollMs: 60000, gitPollMs: 60000, configDir: "", homeDir, tlsVerify, graceMs: 60000, sessionIdleMs: 7200000, autoExit };
   const hub = new EventHub();
   const tls: unknown[] = [];
   const fetchImpl = ((url: any, init: any) => { tls.push(init?.tls); return fetch(url, init); }) as typeof fetch;
@@ -666,6 +673,84 @@ describe("dashboard server", () => {
     await post({ event: "session-start", project: repoDir, payload: { session_id: "s3" } });
     expect(await live()).toEqual([]);
     expect(stops.sort()).toEqual(["cur1", "old1", "old2"]);
+  });
+
+  test("lifecycle: the last session's end exits the server after the grace period, once", async () => {
+    const home = tempHome();
+    let t = Date.now();
+    const exits: string[] = [];
+    const { app, base } = boot(home, { now: () => t, sweepMs: 3_600_000, onExit: (r) => exits.push(r) });
+    await postJson(`${base}/api/events`, { event: "session-start", project: repoDir, payload: { session_id: "L1", source: "startup" } });
+    expect((await (await fetch(`${base}/api/health`)).json()).sessions).toBe(1);
+    await postJson(`${base}/api/events`, { event: "session-end", project: repoDir, payload: { session_id: "L1", reason: "other" } });
+    expect(app.checkExit()).toBeNull();
+    t += 60_000;
+    expect(app.checkExit()).toBe("no factory session or browser for 60s");
+    app.sweep(); app.sweep();
+    expect(exits).toEqual(["no factory session or browser for 60s"]);
+  });
+  test("lifecycle: an unknown session's end does not exit while a known session's process is alive", async () => {
+    const home = tempHome();
+    let t = Date.now();
+    const { app, base } = boot(home, { now: () => t, sweepMs: 3_600_000 });
+    await postJson(`${base}/api/events`, { event: "stage", project: repoDir, stage: "setup", status: "started", session: "L2", pid: process.pid, payload: {} });
+    await postJson(`${base}/api/events`, { event: "session-end", project: repoDir, payload: { session_id: "nobody", reason: "other" } });
+    t += 7_200_000;
+    expect(app.checkExit()).toBeNull();
+    expect(app.sessions.list().map((s) => [s.id, s.pid])).toEqual([["L2", process.pid]]);
+  });
+  test("lifecycle: a session whose process is gone is reaped and the server exits after the grace period", async () => {
+    const home = tempHome();
+    let t = Date.now();
+    const { app, base } = boot(home, { now: () => t, sweepMs: 3_600_000 });
+    await postJson(`${base}/api/events`, { event: "stage", project: repoDir, stage: "setup", status: "started", session: "L3", pid: 999_999, payload: {} });
+    expect(app.checkExit()).toBeNull();
+    expect(app.sessions.count).toBe(0);
+    t += 60_000;
+    expect(app.checkExit()).toBe("no factory session or browser for 60s");
+  });
+  test("lifecycle: an open stream keeps the server alive; closing it starts the grace period", async () => {
+    const home = tempHome();
+    let t = Date.now();
+    const { app, base } = boot(home, { now: () => t, sweepMs: 3_600_000, heartbeatMs: 50 });
+    app.addRepo(repoDir);
+    const ac = new AbortController();
+    const res = await fetch(`${base}/api/stream?repo=${encodeURIComponent(repoDir)}`, { signal: ac.signal });
+    await readUntil(res.body!.getReader(), (acc) => acc.includes(": connected"), 2000);
+    expect((await (await fetch(`${base}/api/health`)).json()).streams).toBe(1);
+    await postJson(`${base}/api/events`, { event: "session-end", project: repoDir, payload: { session_id: "L4" } });
+    t += 7_200_000;
+    expect(app.checkExit()).toBeNull();
+    ac.abort();
+    for (let i = 0; i < 40 && app.sessions.streams > 0; i++) await Bun.sleep(50);
+    expect(app.sessions.streams).toBe(0);
+    t += 59_000; expect(app.checkExit()).toBeNull();
+    t += 1_000; expect(app.checkExit()).toBe("no factory session or browser for 60s");
+  });
+  test("lifecycle: POST /api/repos registers the caller's session; session-end stops that session's live agents", async () => {
+    const home = tempHome();
+    const { app, base } = boot(home, { sweepMs: 3_600_000 });
+    const r = await postJson(`${base}/api/repos`, { path: repoDir, session: "L5", pid: process.pid });
+    expect(r.status).toBe(201);
+    expect(app.sessions.list().map((s) => s.id)).toEqual(["L5"]);
+    await postJson(`${base}/api/events`, { event: "subagent-start", project: repoDir, payload: { agent_id: "L5a", agent_type: "x", session_id: "L5", cwd: repoDir } });
+    await postJson(`${base}/api/events`, { event: "subagent-start", project: repoDir, payload: { agent_id: "L6a", agent_type: "x", session_id: "L6", cwd: repoDir } });
+    await postJson(`${base}/api/events`, { event: "session-end", project: repoDir, payload: { session_id: "L5" } });
+    const agents = (await (await fetch(`${base}/api/agents?repo=${encodeURIComponent(repoDir)}`)).json()) as { live: { agentId: string }[] };
+    expect(agents.live.map((a) => a.agentId)).toEqual(["L6a"]);
+    expect(app.sessions.list().map((s) => s.id).sort()).toEqual(["L6"]);
+  });
+  test("lifecycle: FACTORY_AUTO_EXIT=0 reports the reason but never calls onExit", async () => {
+    const home = tempHome();
+    let t = Date.now();
+    const exits: string[] = [];
+    const { app, base } = boot(home, { now: () => t, sweepMs: 3_600_000, onExit: (r) => exits.push(r) }, undefined, {}, false, false);
+    await postJson(`${base}/api/events`, { event: "session-end", project: repoDir, payload: { session_id: "L7" } });
+    t += 60_000;
+    expect(app.checkExit()).toBe("no factory session or browser for 60s");
+    app.sweep();
+    expect(exits).toEqual([]);
+    expect((await (await fetch(`${base}/api/health`)).json()).autoExit).toBe(false);
   });
 
   test("idle sweep: an agent whose transcript has not grown for 30 min, or with no transcript started 30 min ago, is stopped", async () => {

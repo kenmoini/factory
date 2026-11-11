@@ -11,6 +11,7 @@ import { GitReader } from "./git/reader";
 import { GitPoller } from "./git/poller";
 import { createApi } from "./routes/api";
 import { stopAgent } from "./routes/events";
+import { SessionTracker } from "./sessions";
 
 /** Each repo gets its own Trilium client, from the credentials `repos` resolved for it (see clientFor). */
 export interface AppDeps {
@@ -39,7 +40,11 @@ export interface App {
   tailers: Map<string, TranscriptTailer>;
   gitPollers: Map<string, GitPoller>;
   addRepo(path: string): RepoEntry | null;
-  /** Stops idle live agents (see IDLE_MS); runs every `sweepMs`. */
+  /** The Claude sessions and browser streams using the server. */
+  sessions: SessionTracker;
+  /** Drops sessions whose process is gone, then says why the server should exit now, or null to keep running. */
+  checkExit(): string | null;
+  /** Stops idle live agents (see IDLE_MS) and, with `config.autoExit`, calls `onExit` once checkExit gives a reason; runs every `sweepMs`. */
   sweep(): void;
   stop(): void;
 }
@@ -56,7 +61,7 @@ function allowedHost(host: string | null, port: number | undefined): boolean {
 
 export function createApp(
   deps: AppDeps,
-  opts: { heartbeatMs?: number; html?: HTMLBundle; port?: number; now?: () => number; sweepMs?: number } = {},
+  opts: { heartbeatMs?: number; html?: HTMLBundle; port?: number; now?: () => number; sweepMs?: number; onExit?: (reason: string) => void } = {},
 ): App {
   const pollers = new Map<string, Poller>();
   const tailers = new Map<string, TranscriptTailer>();
@@ -149,14 +154,29 @@ export function createApp(
     if (r?.activeChanged && r.entry.activeWorkstream) followWorkstream(r.entry.repoPath, r.entry.activeWorkstream);
   }
 
+  const sessions = new SessionTracker({
+    now,
+    liveSessionIds: () => new Set(deps.registry.list().live.map((a) => a.sessionId).filter((s): s is string => !!s)),
+  });
+
+  function checkExit(): string | null {
+    sessions.reap();
+    return sessions.exitReason({ graceMs: deps.config.graceMs, sessionIdleMs: deps.config.sessionIdleMs });
+  }
+
+  let exiting = false;
   function sweep(): void {
     const t = now();
     for (const a of deps.registry.list().live) {
       const last = Math.max(Date.parse(a.startedAt) || 0, tailers.get(a.agentId)?.lastGrowthAt ?? 0);
       if (t - last > IDLE_MS) stopAgent(a.agentId, { registry: deps.registry, hub: deps.hub, tailers });
     }
+    const reason = checkExit();
+    if (!reason || !deps.config.autoExit || exiting) return;
+    exiting = true;
+    opts.onExit?.(reason);
   }
-  const sweeper = setInterval(sweep, opts.sweepMs ?? 60_000);
+  const sweeper = setInterval(sweep, opts.sweepMs ?? 15_000);
   sweeper.unref?.();
 
   function stop(): void {
@@ -171,7 +191,7 @@ export function createApp(
     tailers.clear();
   }
 
-  const api = createApi({ deps, pollers, gitPollers, addRepo, clientFor, tailers, lastTask, refresh, refreshGit, gitReader, syncRepo, followWorkstream, now, heartbeatMs: opts.heartbeatMs });
+  const api = createApi({ deps, pollers, gitPollers, addRepo, clientFor, tailers, lastTask, refresh, refreshGit, gitReader, syncRepo, followWorkstream, sessions, now, heartbeatMs: opts.heartbeatMs });
 
   // every route `fetch` serves (API, SSE, mockups, 404s); the SPA entry paths are static bundles served by Bun's `routes`
   async function fetch(req: Request, server?: { port?: number }): Promise<Response> {
@@ -183,5 +203,5 @@ export function createApp(
 
   const html = opts.html;
   const routes: Record<string, HTMLBundle> = html ? Object.fromEntries(SPA_PATHS.map((p) => [p, html])) : {};
-  return { fetch, routes, pollers, tailers, gitPollers, addRepo, sweep, stop };
+  return { fetch, routes, pollers, tailers, gitPollers, addRepo, sessions, checkExit, sweep, stop };
 }

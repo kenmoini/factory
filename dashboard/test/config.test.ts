@@ -13,17 +13,17 @@ describe("loadConfig", () => {
   test("only dashboardPort in the file: no Trilium config, no throw, TLS verification off", () => {
     write({ dashboardPort: 9000 });
     const c = loadConfig({ FACTORY_CONFIG_DIR: dir, HOME: "/h" });
-    expect(c).toEqual({ port: 9000, pollMs: 3000, gitPollMs: 5000, configDir: dir, homeDir: "/h", tlsVerify: false });
+    expect(c).toEqual({ port: 9000, pollMs: 3000, gitPollMs: 5000, configDir: dir, homeDir: "/h", tlsVerify: false, graceMs: 60000, sessionIdleMs: 7200000, autoExit: true });
   });
   test("no file, no env: defaults", () => {
-    expect(loadConfig({ FACTORY_CONFIG_DIR: dir })).toEqual({ port: 7777, pollMs: 3000, gitPollMs: 5000, configDir: dir, homeDir: "", tlsVerify: false });
+    expect(loadConfig({ FACTORY_CONFIG_DIR: dir })).toEqual({ port: 7777, pollMs: 3000, gitPollMs: 5000, configDir: dir, homeDir: "", tlsVerify: false, graceMs: 60000, sessionIdleMs: 7200000, autoExit: true });
     writeFileSync(join(dir, "config.json"), "{ broken");
     expect(loadConfig({ FACTORY_CONFIG_DIR: dir }).port).toBe(7777);
   });
   test("legacy file keys are still read (global fallback), trailing slash stripped", () => {
     write({ triliumUrl: "http://t:8080/", etapiToken: "tok", dashboardPort: 9000 });
     const c = loadConfig({ FACTORY_CONFIG_DIR: dir, HOME: "/h" });
-    expect(c).toEqual({ triliumUrl: "http://t:8080", etapiToken: "tok", port: 9000, pollMs: 3000, gitPollMs: 5000, configDir: dir, homeDir: "/h", tlsVerify: false });
+    expect(c).toEqual({ triliumUrl: "http://t:8080", etapiToken: "tok", port: 9000, pollMs: 3000, gitPollMs: 5000, configDir: dir, homeDir: "/h", tlsVerify: false, graceMs: 60000, sessionIdleMs: 7200000, autoExit: true });
   });
   test("env overrides file", () => {
     write({ triliumUrl: "http://file", etapiToken: "ftok", dashboardPort: 9000 });
@@ -42,5 +42,10 @@ describe("loadConfig", () => {
     expect(loadConfig({ FACTORY_CONFIG_DIR: dir, FACTORY_TLS_VERIFY: "1" }).tlsVerify).toBe(true);
     expect(loadConfig({ FACTORY_CONFIG_DIR: dir, FACTORY_TLS_VERIFY: "0" }).tlsVerify).toBe(false);
     expect(loadConfig({ FACTORY_CONFIG_DIR: dir, FACTORY_TLS_VERIFY: "" }).tlsVerify).toBe(false);
+  });
+  test("lifecycle: FACTORY_GRACE_MS, FACTORY_SESSION_IDLE_MS, FACTORY_AUTO_EXIT=0", () => {
+    const c = loadConfig({ FACTORY_CONFIG_DIR: dir, FACTORY_GRACE_MS: "5000", FACTORY_SESSION_IDLE_MS: "1000", FACTORY_AUTO_EXIT: "0" });
+    expect([c.graceMs, c.sessionIdleMs, c.autoExit]).toEqual([5000, 1000, false]);
+    expect(loadConfig({ FACTORY_CONFIG_DIR: dir, FACTORY_GRACE_MS: "x", FACTORY_AUTO_EXIT: "1" })).toMatchObject({ graceMs: 60000, autoExit: true });
   });
 });
