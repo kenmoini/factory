@@ -33,6 +33,17 @@ describe("factory-settings env", () => {
     expect((await run(["env", join(tmp(), "s.json"), "NOEQUALS"])).code).toBe(2);
     expect((await run(["bogus"])).code).toBe(2);
   });
+  test("a failed write prints invalid and the OS error on stderr", async () => {
+    const dir = tmp(); const parent = join(dir, "file");
+    writeFileSync(parent, "x"); // a regular file where the target's directory should be
+    for (const args of [["env", join(parent, "s.json"), "A=1"], ["mcp", join(parent, ".mcp.json"), "trilium", "http://y"]]) {
+      const r = await run(args);
+      expect(r).toMatchObject({ code: 1, out: "invalid" });
+      expect(r.err.trim()).not.toBe("");
+    }
+    expect(readFileSync(parent, "utf8")).toBe("x");
+    noTemp(dir);
+  });
 });
 describe("factory-settings mcp", () => {
   test("writes the trilium entry with a normalised url and mode 0600; keeps other servers", async () => {
@@ -55,5 +66,11 @@ describe("factory-settings mcp", () => {
     writeFileSync(f, "{ nope");
     expect((await run(["mcp", f, "trilium", "http://y"])).out).toBe("invalid");
     noTemp(dir);
+  });
+  test("an empty name or url is a usage error", async () => {
+    const dir = tmp(); const f = join(dir, ".mcp.json");
+    expect((await run(["mcp", f, "trilium", ""])).code).toBe(2);
+    expect((await run(["mcp", f, "", "http://y"])).code).toBe(2);
+    expect(readdirSync(dir)).toEqual([]);
   });
 });

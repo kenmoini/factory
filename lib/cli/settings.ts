@@ -16,15 +16,17 @@ if (cmd === "env" && file && rest.length > 0) {
     pairs[a.slice(0, i)] = a.slice(i + 1);
   }
   run = () => ensureEnv(file, pairs);
-} else if (cmd === "mcp" && file && rest.length === 2) {
+} else if (cmd === "mcp" && file && rest.length === 2 && rest.every((a) => a.trim() !== "")) {
   run = () => ensureMcpServer(file, rest[0], rest[1]);
 } else usage();
 
 let result: SettingsResult;
 try {
   result = run();
-} catch {
+} catch (e) {
   result = "invalid"; // a failed write; the target is untouched
+  // why, for the reader of `invalid`: the OS error (EACCES, ENOSPC, ENOTDIR…), never file content
+  console.error(`factory-settings: ${e instanceof Error ? e.message : String(e)}`);
 }
 console.log(result);
 process.exit(result === "written" || result === "unchanged" ? 0 : 1);
