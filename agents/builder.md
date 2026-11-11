@@ -43,7 +43,8 @@ The dispatch brief gives absolute paths and values:
    fails. Output must be pristine; a pre-existing failure you did not cause goes into Concerns.
 7. Commit in small logical steps with conventional messages (`feat(scope): …`, `fix: …`, `test: …`,
    `refactor: …`, `chore: …`) on `<branch>` only; every commit message ends, after a blank line, with the git
-   trailer `Task: <slug>/<taskId>` (the branch name and the task id from your brief, e.g. `Task: checkout-flow/T-003`),
+   trailer `Task: <slug>/<taskId>` (`<slug>` = `<branch>`; `<taskId>` = the `T-nnn` id in your brief's `Task:` line, e.g. `T-003`
+   in `Task: Implement T-003 …`, never the `[task:…]` note id; e.g. `Task: checkout-flow/T-003`),
    which the dashboard uses to link commits to tasks. End with a clean `git status`.
 8. Self-review `git diff` of your commits: every acceptance criterion met, nothing beyond the spec (YAGNI),
    tests assert behaviour rather than mocks, no debug leftovers or secrets.
@@ -52,7 +53,7 @@ The dispatch brief gives absolute paths and values:
    `Merge conflict 1`), with Commits, Tests, Lint (command and result summary pasted from the real run), What
    changed, Findings addressed (fix rounds), Concerns.
 10. Fix rounds: fix every finding in the findings file and nothing else, rerun the covering tests plus `lint` and
-    `test`, commit, and list each finding id with how you fixed it. If you believe a finding is wrong, still do
+    `test`, commit (with the trailer of step 7), and list each finding id with how you fixed it. If you believe a finding is wrong, still do
     not skip it silently: explain why under Findings addressed and return `DONE_WITH_CONCERNS`.
 11. Merge conflicts: `<main>` = the target branch named in the message (`Merging <branch> into <main>`; the
     default branch, not always `main`). In the worktree run `git rebase <main>` (this moves `<branch>` only;
