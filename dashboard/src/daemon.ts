@@ -39,11 +39,33 @@ function readPid(): number | undefined {
 function alive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === "EPERM"; }
 }
-async function healthy(): Promise<boolean> {
+type Probe = { ok: false } | { ok: true; pid: number | null };
+/**
+ * Asks the port's listener for /api/health: `ok` once anything answers HTTP, `pid` the process the answer names (a
+ * factory server always names itself), null when it names none.
+ */
+async function probe(): Promise<Probe> {
+  let text: string;
   try {
-    const r = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(1000) });
-    return r.status === 200;
-  } catch { return false; }
+    text = await (await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(1000) })).text();
+  } catch { return { ok: false }; }
+  let pid: unknown;
+  try { pid = JSON.parse(text)?.pid; } catch { /* not JSON: names no process */ }
+  return { ok: true, pid: typeof pid === "number" && Number.isInteger(pid) && pid > 0 ? pid : null };
+}
+/** The listener is a factory dashboard server, whichever pid the pidfile names. */
+const ours = (p: Probe): p is { ok: true; pid: number } => p.ok && p.pid !== null && isOurServer(p.pid);
+/** Points the pidfile at `pid` when it names another process; true when it was rewritten. */
+function claimPid(pid: number): boolean {
+  if (readPid() === pid) return false;
+  try {
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(pidFile, String(pid));
+    return true;
+  } catch (e) {
+    log(`cannot write pidfile: ${(e as Error).message}`);
+    return false;
+  }
 }
 function tail(n = 20): string[] {
   try { return readFileSync(logFile, "utf8").split("\n").filter(Boolean).slice(-n); } catch { return []; }
@@ -53,13 +75,17 @@ function openUrl(): void {
   try { Bun.spawn([bin, url], { stdio: ["ignore", "ignore", "ignore"] }).unref(); } catch { /* no browser */ }
 }
 
-async function status(): Promise<{ running: boolean; pid?: number }> {
+/** Reports who listens on the port, and repairs the pidfile when it is our server the pidfile does not name. */
+async function status(): Promise<void> {
+  const found = await probe();
+  if (ours(found)) {
+    print({ running: true, port, pid: found.pid, url, ...(claimPid(found.pid) ? { repaired: true } : {}) });
+    return;
+  }
+  if (found.ok) { print({ running: false, port, foreign: true }); return; }
   const pid = readPid();
-  const running = pid !== undefined && alive(pid) && (await healthy());
-  const out: Record<string, unknown> = { running, port };
-  if (running) { out.pid = pid; out.url = url; }
-  print(out);
-  return { running, pid };
+  if (pid !== undefined && !alive(pid)) rmSync(pidFile, { force: true });
+  print({ running: false, port });
 }
 
 function isOurServer(pid: number): boolean {
@@ -83,11 +109,15 @@ function log(line: string): void {
 async function registerCwd(): Promise<void> {
   const cwd = process.cwd();
   if (!existsSync(join(cwd, ".factory", "config.json"))) return;
+  // the calling Claude session uses the server while its process lives (see sessions.ts)
+  const body: { path: string; session?: string; pid?: number } = { path: cwd };
+  if (env.CLAUDE_CODE_SESSION_ID) body.session = env.CLAUDE_CODE_SESSION_ID;
+  if (/^[0-9]+$/.test(env.CLAUDE_PID ?? "")) body.pid = Number(env.CLAUDE_PID);
   try {
     const r = await fetch(`${url}/api/repos`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: cwd }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(2000),
     });
     if (!r.ok) log(`registering ${cwd} returned ${r.status}`);
@@ -117,13 +147,26 @@ async function terminate(pid: number): Promise<void> {
 }
 
 async function start(): Promise<number> {
+  const found = await probe();
+  if (ours(found)) {
+    await registerCwd();
+    print({ running: true, port, pid: found.pid, url, ...(claimPid(found.pid) ? { adopted: true } : {}) });
+    if (args.open) openUrl();
+    return 0;
+  }
+  if (found.ok) {
+    print({ running: false, error: `port ${port} is in use by another program` });
+    return 1;
+  }
   const existing = readPid();
   let replaced: number | undefined;
   if (existing !== undefined && alive(existing)) {
     if (isOurServer(existing)) {
+      // it may still be starting: wait for it to answer before replacing it
       const deadline = Date.now() + 5000;
       while (Date.now() < deadline) {
-        if (await healthy()) {
+        const p = await probe();
+        if (p.ok && p.pid === existing) {
           await registerCwd();
           print({ running: true, port, pid: existing, url });
           if (args.open) openUrl();
@@ -169,8 +212,8 @@ async function start(): Promise<number> {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
     if (proc.exitCode !== null) break;
-    if (await healthy()) {
-      if (proc.exitCode !== null) break;
+    const p = await probe();
+    if (p.ok && p.pid === proc.pid) { // only our child: another listener may share the port
       await registerCwd();
       print({ running: true, port, pid: proc.pid, url, ...(replaced !== undefined ? { replaced } : {}) });
       if (args.open) openUrl();
@@ -191,6 +234,13 @@ async function start(): Promise<number> {
 }
 
 async function stop(): Promise<number> {
+  const found = await probe();
+  if (ours(found)) {
+    await terminate(found.pid);
+    rmSync(pidFile, { force: true });
+    print({ running: false, stopped: found.pid });
+    return 0;
+  }
   const pid = readPid();
   if (pid === undefined || !alive(pid)) {
     rmSync(pidFile, { force: true });

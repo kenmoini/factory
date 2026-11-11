@@ -10,6 +10,7 @@ let dir: string;
 let home: string;
 let port: number;
 let env: Record<string, string>;
+let repoWithConfig: string; // a factory repo: start registers it, with the caller's session
 
 function run(cmd: string, cwd?: string, script = daemon): { code: number; json: any } {
   const r = Bun.spawnSync([process.execPath, script, cmd], { env, cwd, stdout: "pipe", stderr: "pipe" });
@@ -24,6 +25,9 @@ beforeAll(() => {
   etapi = startFakeEtapi({ ...loadFixtureNotes(), token: "fake-token" }, { port: 0 });
   dir = mkdtempSync(join(tmpdir(), "factory-daemon-"));
   home = mkdtempSync(join(tmpdir(), "factory-daemon-home-")); // no ~/.claude.json: only a repo's .mcp.json names a Trilium
+  repoWithConfig = mkdtempSync(join(tmpdir(), "factory-daemon-repo-"));
+  mkdirSync(join(repoWithConfig, ".factory"));
+  writeFileSync(join(repoWithConfig, ".factory/config.json"), "{}");
   const probe = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("x") });
   port = probe.port as number;
   probe.stop(true);
@@ -45,6 +49,7 @@ afterAll(() => {
   etapi?.stop();
   rmSync(dir, { recursive: true, force: true });
   rmSync(home, { recursive: true, force: true });
+  rmSync(repoWithConfig, { recursive: true, force: true });
 });
 
 describe("daemon lifecycle", () => {
@@ -121,7 +126,7 @@ describe("daemon lifecycle", () => {
     const cfg = join(root, "cfg");
     mkdirSync(join(dash, "src"), { recursive: true });
     for (const f of ["daemon.ts", "config.ts"]) copyFileSync(join(import.meta.dir, "../src", f), join(dash, "src", f));
-    writeFileSync(join(dash, "src/server.ts"), `Bun.serve({ hostname: "127.0.0.1", port: Number(process.env.FACTORY_DASHBOARD_PORT), fetch: () => Response.json({ ok: true }) });`);
+    writeFileSync(join(dash, "src/server.ts"), `Bun.serve({ hostname: "127.0.0.1", port: Number(process.env.FACTORY_DASHBOARD_PORT), fetch: () => Response.json({ ok: true, pid: process.pid }) });`);
     const saved = env;
     env = { ...env, FACTORY_CONFIG_DIR: cfg };
     try {
@@ -154,7 +159,7 @@ describe("daemon lifecycle", () => {
     mkdirSync(join(dash, "node_modules")); // deps "installed": no bun install
     for (const f of ["daemon.ts", "config.ts"]) copyFileSync(join(import.meta.dir, "../src", f), join(dash, "src", f));
     writeFileSync(join(dash, "src/server.ts"),
-      `Bun.serve({ hostname: "127.0.0.1", port: Number(process.env.FACTORY_DASHBOARD_PORT), fetch: () => Response.json({ ok: true, tls: process.env.NODE_TLS_REJECT_UNAUTHORIZED ?? null }) });`);
+      `Bun.serve({ hostname: "127.0.0.1", port: Number(process.env.FACTORY_DASHBOARD_PORT), fetch: () => Response.json({ ok: true, pid: process.pid, tls: process.env.NODE_TLS_REJECT_UNAUTHORIZED ?? null }) });`);
     const script = join(dash, "src/daemon.ts");
     const saved = env;
     const tlsEnv = async () => ((await (await fetch(`http://127.0.0.1:${port}/api/health`)).json()) as any).tls;
@@ -197,5 +202,52 @@ describe("daemon lifecycle", () => {
     } finally {
       victim.kill("SIGKILL");
     }
+  }, 30000);
+
+  test("start adopts a running factory server the pidfile does not name", async () => {
+    const a = run("start");
+    try {
+      expect(a.json.running).toBe(true);
+      rmSync(join(env.FACTORY_CONFIG_DIR, "dashboard.pid"));
+      const b = run("start");
+      expect(b.json).toMatchObject({ running: true, pid: a.json.pid, adopted: true });
+      expect(readFileSync(join(env.FACTORY_CONFIG_DIR, "dashboard.pid"), "utf8").trim()).toBe(String(a.json.pid));
+      expect(alive(a.json.pid)).toBe(true);
+    } finally { run("stop"); }
+  }, 30000);
+
+  test("status repairs a pidfile that names another process", async () => {
+    const a = run("start");
+    try {
+      writeFileSync(join(env.FACTORY_CONFIG_DIR, "dashboard.pid"), "1");
+      expect(run("status").json).toMatchObject({ running: true, pid: a.json.pid, repaired: true });
+      expect(readFileSync(join(env.FACTORY_CONFIG_DIR, "dashboard.pid"), "utf8").trim()).toBe(String(a.json.pid));
+    } finally { run("stop"); }
+  }, 30000);
+
+  test("a foreign listener on the port is reported, never killed or replaced", async () => {
+    // its own process: run() blocks this thread, so a Bun.serve in the test could not answer the daemon's probe
+    const foreign = Bun.spawn([process.execPath, "-e", `Bun.serve({ hostname: "127.0.0.1", port: ${port}, fetch: () => Response.json({ ok: true }) })`],
+      { stdio: ["ignore", "ignore", "ignore"] });
+    const health = async () => (await (await fetch(`http://127.0.0.1:${port}/api/health`)).json()) as any;
+    try {
+      for (let i = 0; i < 50 && !(await health().catch(() => null)); i++) await Bun.sleep(100);
+      const s = run("start");
+      expect(s.code).toBe(1);
+      expect(s.json).toEqual({ running: false, error: `port ${port} is in use by another program` });
+      expect(existsSync(join(env.FACTORY_CONFIG_DIR, "dashboard.pid"))).toBe(false);
+      expect(run("status").json).toEqual({ running: false, port, foreign: true });
+      expect((await health()).ok).toBe(true);
+    } finally { foreign.kill("SIGKILL"); await foreign.exited; }
+  }, 30000);
+
+  test("start registers the caller's session from CLAUDE_CODE_SESSION_ID and CLAUDE_PID", async () => {
+    const saved = env;
+    env = { ...saved, CLAUDE_CODE_SESSION_ID: "d-sess", CLAUDE_PID: String(process.pid) };
+    try {
+      expect(run("start", repoWithConfig).json.running).toBe(true);
+      const h = (await (await fetch(`http://127.0.0.1:${port}/api/health`)).json()) as any;
+      expect(h.sessions).toBe(1);
+    } finally { run("stop"); env = saved; }
   }, 30000);
 });
