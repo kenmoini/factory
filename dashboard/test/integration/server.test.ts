@@ -806,6 +806,20 @@ describe("dashboard server", () => {
       expect(await r.json()).toEqual({ error: "git failed" });
       for (const line of logged) { expect(line).not.toContain("fatal:"); expect(line).not.toContain("not a git repository"); }
     });
+    test("a registered directory that is not a git repository: the stream's connect frames and GET /api/repo carry the error", async () => {
+      const { base, app } = boot(); const plain = tempRepo({}); app.addRepo(plain); const q = encodeURIComponent(plain);
+      await app.gitPollers.get(plain)!.refresh();                    // the first poll failed; nothing else polls (gitPollMs 60 s)
+      const ac = new AbortController();
+      const res = await fetch(`${base}/api/stream?repo=${q}`, { signal: ac.signal });
+      const acc = await readUntil(res.body!.getReader(), (a) => a.includes("event: repo"), 2000);
+      ac.abort();
+      const frame = acc.split("\n\n").find((f) => f.startsWith("event: repo"))!;
+      const pushed = JSON.parse(frame.slice(frame.indexOf("data: ") + 6));
+      expect(pushed).toMatchObject({ repoPath: plain, branches: [], commits: [], error: expect.stringMatching(/not a git repository/) });
+      const r = await fetch(`${base}/api/repo?repo=${q}`);
+      expect(r.status).toBe(200);
+      expect(((await r.json()) as any).error).toMatch(/not a git repository/);
+    });
     test("the stream sends a repo frame on connect and after a task event that changed git", async () => {
       const { base, app } = boot(); app.addRepo(repoDir); const q = encodeURIComponent(repoDir);
       await app.gitPollers.get(repoDir)!.refresh();

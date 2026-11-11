@@ -57,13 +57,16 @@ export class GitError extends Error {
   constructor(message: string, readonly code: number) { super(message); this.name = "GitError"; }
 }
 
+/** A failed run as a `GitError`: git's stderr, or "git not found" when git could not be started at all (127). */
+const failure = (r: { code: number; err: string }) => new GitError(r.code === 127 ? "git not found" : r.err.trim() || "git failed", r.code);
+
 /** Read-only view of one repository, built on git plumbing. */
 export class GitReader {
   constructor(readonly repoPath: string, private run: GitRunner = runGit) {}
 
   private async git(args: string[], cwd = this.repoPath): Promise<string> {
     const r = await this.run(args, cwd);
-    if (r.code !== 0) throw new GitError(r.err.trim() || "git failed", r.code);
+    if (r.code !== 0) throw failure(r);
     return r.out;
   }
 
@@ -75,7 +78,7 @@ export class GitReader {
   /** `rev-parse --is-inside-work-tree`: git failing to run at all (missing binary, timeout) throws instead of reading as "not a repo". */
   private async probeRepo(): Promise<{ ok: boolean }> {
     const r = await this.run(["rev-parse", "--is-inside-work-tree"], this.repoPath);
-    if (r.code === 124 || r.code === 125 || r.code === 127) throw new GitError(r.err.trim() || "git failed", r.code);
+    if (r.code === 124 || r.code === 125 || r.code === 127) throw failure(r);
     return { ok: r.code === 0 && r.out.trim() === "true" };
   }
 
@@ -108,7 +111,7 @@ export class GitReader {
   async detail(sha: string): Promise<CommitDetail | null> {
     const v = await this.run(["rev-parse", "--verify", "--quiet", `${sha}^{commit}`], this.repoPath);
     if (v.code === 1) return null;                       // --verify --quiet: exit 1 means "not a commit"; anything else is git failing
-    if (v.code !== 0) throw new GitError(v.err.trim() || "git failed", v.code);
+    if (v.code !== 0) throw failure(v);
     const full = v.out.trim();
     const [raw] = parseLog(await this.git(["log", "-n", "1", `--format=${LOG_FORMAT}`, full, "--"]));
     if (!raw) return null;

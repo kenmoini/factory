@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { GitPoller } from "../src/git/poller";
-import type { RepoProbe } from "../src/git/reader";
+import { errorSnapshot, type RepoProbe } from "../src/git/reader";
 import { EventHub } from "../src/hub";
 import type { RepoSnapshot, StreamEvent } from "../src/shared/types";
 
@@ -36,6 +36,30 @@ describe("GitPoller", () => {
     expect(await p.refresh()).toBe(true); expect(p.lastError()).toBeNull();
     expect(events.map((e) => e.type)).toEqual(["repo", "repo", "repo"]);
     expect(reader.calls.opts[0]).toEqual({ limit: 50 });
+  });
+  test("until a good snapshot exists a failure is the snapshot, published when its error changes; later failures keep the good one", async () => {
+    const reader = fakeReader([{ error: "not a git repository: /r" }, { error: "not a git repository: /r" }, { error: "git not found" }, "1", { error: "git timed out" }, "!log failed"]);
+    const hub = new EventHub(); const events: StreamEvent[] = []; hub.subscribe("/r", (e) => events.push(e));
+    const p = new GitPoller("/r", { reader, hub }, { limit: 50 });
+    expect(await p.refresh()).toBe(true);
+    expect(p.snapshot()).toEqual(errorSnapshot("/r", 50, "not a git repository: /r")); expect(p.lastError()).toBe("not a git repository: /r");
+    expect(events).toEqual([{ type: "repo", data: errorSnapshot("/r", 50, "not a git repository: /r") }]);
+    expect(await p.refresh()).toBe(false); expect(events).toHaveLength(1);        // the same error again: nothing new
+    expect(await p.refresh()).toBe(true); expect(events).toHaveLength(2);         // a different one is published
+    expect(p.snapshot()?.error).toBe("git not found");
+    expect(await p.refresh()).toBe(true); expect(events).toHaveLength(3);         // the first good snapshot replaces it
+    expect(p.snapshot()?.fingerprint).toBe("1"); expect(p.snapshot()?.error).toBeUndefined(); expect(p.lastError()).toBeNull();
+    expect(await p.refresh()).toBe(false); expect(p.lastError()).toBe("git timed out"); expect(p.snapshot()?.fingerprint).toBe("1");
+    expect(await p.refresh()).toBe(false); expect(p.lastError()).toBe("log failed"); expect(p.snapshot()?.fingerprint).toBe("1");
+    expect(events).toHaveLength(3);
+  });
+  test("a failed build with no good snapshot yet is published as the error snapshot too", async () => {
+    const reader = fakeReader(["!log failed", "1"]);
+    const hub = new EventHub(); const events: StreamEvent[] = []; hub.subscribe("/r", (e) => events.push(e));
+    const p = new GitPoller("/r", { reader, hub });
+    expect(await p.refresh()).toBe(true); expect(p.snapshot()?.error).toBe("log failed");
+    expect(await p.refresh()).toBe(true); expect(p.snapshot()?.fingerprint).toBe("1");
+    expect(events.map((e) => (e.data as RepoSnapshot).error ?? (e.data as RepoSnapshot).fingerprint)).toEqual(["log failed", "1"]);
   });
   test("probes on every refresh and builds only when the fingerprint changed", async () => {
     const reader = fakeReader(["1", "1", "1", "2"]);

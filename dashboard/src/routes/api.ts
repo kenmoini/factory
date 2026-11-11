@@ -2,12 +2,12 @@ import type { AppDeps } from "../app";
 import type { RepoEntry } from "../repos";
 import type { Poller } from "../trilium/poller";
 import type { GitPoller } from "../git/poller";
-import { GitError, type GitReader } from "../git/reader";
+import { errorSnapshot, GitError, type GitReader } from "../git/reader";
 import { NOT_CONFIGURED, TOKEN_NOT_CONFIGURED, TriliumConfigError, TriliumError, type EtapiNote, type TriliumClient } from "../trilium/client";
 import { labelsOf } from "../trilium/mapper";
 import type { TranscriptTailer } from "../agents/tailer";
 import { runInWorkstream } from "../shared/agents";
-import type { CommitDetail, HookEvent, RepoSnapshot, TaskDetail, WorkstreamSnapshot } from "../shared/types";
+import type { CommitDetail, HookEvent, TaskDetail, WorkstreamSnapshot } from "../shared/types";
 import { handleEvent } from "./events";
 import { mockupsRoute } from "./mockups";
 import { streamRoute } from "./stream";
@@ -245,13 +245,7 @@ export function createApi(ctx: Ctx) {
     const branch = url.searchParams.get("branch") || undefined;
     if (!poller.snapshot()) await poller.refresh();
     if (branch && !poller.snapshot()?.branches.some((b) => b.name === branch)) return json({ error: "unknown branch" }, 400);
-    if (limit === 100 && !branch) {
-      const snap: RepoSnapshot = poller.snapshot() ?? {
-        repoPath: repoKey, defaultBranch: "main", branches: [], commits: [], limit: 100, truncated: false, fingerprint: "",
-        error: poller.lastError() ?? "no snapshot yet",
-      };
-      return json(snap);
-    }
+    if (limit === 100 && !branch) return json(poller.snapshot() ?? errorSnapshot(repoKey, 100, poller.lastError() ?? "no snapshot yet"));
     return json(await gitReader(repoKey).snapshot({ limit, branch }));
   };
 

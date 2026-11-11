@@ -112,17 +112,18 @@ describe("GitReader", () => {
     expect(await r.detail("0".repeat(40))).toBeNull();
     expect(await r.detail(head.sha.slice(0, 7))).not.toBeNull();
   });
-  test("not a repository and a missing git binary become snapshot.error", async () => {
+  test("not a repository and a missing git binary (runner code 127: \"git not found\") become snapshot.error", async () => {
     const dir = mkdtempSync(join(tmpdir(), "factory-nogit-"));
     try {
       expect((await new GitReader(dir).snapshot()).error).toMatch(/not a git repository/i);
+      expect(await new GitReader(dir).probe()).toEqual({ error: expect.stringMatching(/not a git repository/) });
     } finally { rmSync(dir, { recursive: true, force: true }); }
     const broken = new GitReader(root, async () => ({ code: 127, out: "", err: "spawn git ENOENT" }));
-    expect((await broken.snapshot()).error).toMatch(/ENOENT/);
+    expect((await broken.snapshot()).error).toBe("git not found");
   });
   test("detail: a git failure is an error, only an unknown sha is null", async () => {
     const down = new GitReader(root, async () => ({ code: 127, out: "", err: "spawn git ENOENT" }));
-    await expect(down.detail("abc1234")).rejects.toThrow(/ENOENT/);
+    await expect(down.detail("abc1234")).rejects.toThrow("git not found");
   });
   test("a deleted worktree folder does not break the snapshot", async () => {
     const gone = join(root, ".factory/worktrees/gone");
