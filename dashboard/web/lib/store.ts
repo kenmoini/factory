@@ -30,7 +30,9 @@ export type Action =
   | { type: "select-ws"; data: string }
   | { type: "select-commit"; data?: string }
   | { type: "repo-view"; data: RepoView }
-  | { type: "open-task"; data: { ws: string; taskId: string } };
+  | { type: "open-task"; data: { ws: string; taskId: string } }
+  /** The workstream `open-task` switched to does not exist (`switchWorkstream` got a 404): nothing stays pending. */
+  | { type: "open-task-failed" };
 
 /** Steps kept per agent in the browser; older ones are dropped (the server keeps the full history). */
 export const STEP_CAP = 500;
@@ -101,6 +103,8 @@ export function reduce(state: State, e: Action): State {
       if (task) return { ...state, tab: "board", selectedTask: task.id, pendingTask: undefined };
       return { ...state, tab: "board", ws, selectedTask: undefined, pendingTask: { ws, taskId } };
     }
+    case "open-task-failed":
+      return state.pendingTask ? { ...state, pendingTask: undefined } : state;
     case "tab":
       return state.tab === e.data ? state : { ...state, tab: e.data };
     case "select-repo":

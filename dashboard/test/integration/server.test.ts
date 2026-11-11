@@ -11,6 +11,8 @@ import { RepoRegistry } from "../../src/repos";
 import { columnFor } from "../../src/shared/columns";
 import type { StreamEvent, WorkstreamSnapshot } from "../../src/shared/types";
 import type { EtapiNote } from "../../src/trilium/client";
+import { createStore, initialState, reduce, type Action } from "../../web/lib/store";
+import { switchWorkstream } from "../../web/lib/workstream";
 import { loadFixtureNotes, startFakeEtapi } from "./fake-etapi";
 
 const cleanups: (() => void)[] = [];
@@ -512,6 +514,33 @@ describe("dashboard server", () => {
     expect(n.runs.map((r: any) => r.id).sort()).toEqual(["runLegacy", "runNext"]);
   });
 
+  test("switchWorkstream (Open on board for another workstream): the poller moves to it and its snapshot is dispatched; an unknown one dispatches open-task-failed", async () => {
+    const repo = tempRepo({ projectNoteId: "proj1", activeWorkstream: "demo", workstreams: { demo: { noteId: "ws1" }, next: { noteId: "ws2" } } }, { url: ext.url, token: TOKEN });
+    const { app, base } = boot();
+    app.addRepo(repo);
+    await app.pollers.get(repo)!.refresh();
+    const s = createStore(reduce, initialState);
+    const seen: Action[] = [];
+    const target = { getState: s.getState, dispatch: (a: Action) => { seen.push(a); s.dispatch(a); } };
+    s.dispatch({ type: "select-repo", data: { repo, ws: "demo" } });
+    s.dispatch({ type: "snapshot", data: app.pollers.get(repo)!.snapshot()! });
+    expect(s.getState().snapshot?.workstream?.slug).toBe("demo");
+    s.dispatch({ type: "open-task", data: { ws: "next", taskId: "T-001" } });   // what the commit drawer dispatches first
+    await switchWorkstream(repo, "next", target, base);
+    expect(seen.map((a) => a.type)).toEqual(["snapshot"]);
+    expect((seen[0] as Extract<Action, { type: "snapshot" }>).data.workstream?.slug).toBe("next");
+    expect(app.pollers.get(repo)!.snapshot()?.workstream?.slug).toBe("next"); // the stream keeps sending next from now on
+    expect(s.getState()).toMatchObject({ tab: "board", selectedTask: "tn1" }); expect(s.getState().pendingTask).toBeUndefined();
+    s.dispatch({ type: "open-task", data: { ws: "nope", taskId: "T-001" } });
+    expect(s.getState().pendingTask).toEqual({ ws: "nope", taskId: "T-001" });
+    await switchWorkstream(repo, "nope", target, base);
+    expect(seen.map((a) => a.type)).toEqual(["snapshot", "open-task-failed"]);
+    expect(s.getState().pendingTask).toBeUndefined(); expect(s.getState().snapshot?.workstream?.slug).toBe("next");
+    // a reply for a repo the user has left is dropped
+    s.dispatch({ type: "select-repo", data: { repo: "/elsewhere" } });
+    await switchWorkstream(repo, "next", target, base);
+    expect(seen).toHaveLength(2);
+  });
   test("config is re-read on events and GET /api/repos: a second workstream appears and the poller follows activeWorkstream until the user picks one", async () => {
     const repo = tempRepo(DEMO, { url: ext.url, token: TOKEN });
     const { app, base } = boot();

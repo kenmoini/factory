@@ -5,6 +5,7 @@ import { useDetail } from "../lib/detail";
 import type { RailLayout } from "../lib/rail";
 import { dispatch, useStore } from "../lib/store";
 import { statusLine } from "../lib/task-status";
+import { switchWorkstream } from "../lib/workstream";
 import { CommitChips } from "./Chips";
 import { stripId } from "./Kanban";
 import { laneColour } from "./Rail";
@@ -49,11 +50,16 @@ function Worktrees({ trees, root, defaultBranch }: { trees: { branch: RepoBranch
 /**
  * One `[task]` link of the commit: a task of the on-screen workstream resolves through the snapshot (id, title,
  * milestone, status, round); one from another workstream, or one the snapshot no longer has, reads `slug/T-xxx`.
+ * "Open on board" for another workstream also points the server at it, whose snapshot completes the selection.
  */
-function FactoryTask({ taskRef, snapshot }: { taskRef: TaskRef; snapshot: WorkstreamSnapshot | null }) {
+function FactoryTask({ taskRef, snapshot, repoPath }: { taskRef: TaskRef; snapshot: WorkstreamSnapshot | null; repoPath: string }) {
   const labelId = useId();
   const task = snapshot?.workstream?.slug === taskRef.slug ? snapshot.tasks.find((t) => t.taskId === taskRef.taskId) : undefined;
   const milestone = task ? snapshot?.milestones.find((m) => m.milestoneId === task.milestoneId) : undefined;
+  const openOnBoard = () => {
+    dispatch({ type: "open-task", data: { ws: taskRef.slug, taskId: taskRef.taskId } });
+    if (snapshot?.workstream?.slug !== taskRef.slug) void switchWorkstream(repoPath, taskRef.slug);
+  };
   return (
     <li>
       <dl className="kv">
@@ -74,7 +80,7 @@ function FactoryTask({ taskRef, snapshot }: { taskRef: TaskRef; snapshot: Workst
           </>
         )}
       </dl>
-      <button className="doc-retry" type="button" aria-describedby={labelId} onClick={() => dispatch({ type: "open-task", data: { ws: taskRef.slug, taskId: taskRef.taskId } })}>
+      <button className="doc-retry" type="button" aria-describedby={labelId} onClick={openOnBoard}>
         Open on board
       </button>
     </li>
@@ -237,7 +243,7 @@ export function CommitDrawer({ repoPath, shown, snapshot, layout, branches, live
               <h3>Factory</h3>
               {commit.tasks.length === 0 ? <p className="drawer-state">Not linked to a task.</p> : (
                 <ul className="commit-tasks">
-                  {commit.tasks.map((t) => <FactoryTask key={`${t.slug}/${t.taskId}`} taskRef={t} snapshot={snapshot} />)}
+                  {commit.tasks.map((t) => <FactoryTask key={`${t.slug}/${t.taskId}`} taskRef={t} snapshot={snapshot} repoPath={repoPath} />)}
                 </ul>
               )}
             </section>

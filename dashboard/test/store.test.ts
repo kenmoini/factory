@@ -186,6 +186,13 @@ describe("repo tab state", () => {
     s = reduce(s, { type: "snapshot", data: wsSnap("next", [{ id: "tn1", taskId: "T-001" }]) });
     expect(s.selectedTask).toBe("tn1"); expect(s.pendingTask).toBeUndefined();
   });
+  test("open-task-failed clears the pending task and changes nothing else", () => {
+    const from: State = { ...initialState, repo: "/w", ws: "nope", tab: "board", snapshot: wsSnap("demo", []), repoSnapshot: rsnap("a"), selectedCommit: "abc", pendingTask: { ws: "nope", taskId: "T-001" } };
+    const s = reduce(from, { type: "open-task-failed" });
+    expect(s).toEqual({ ...from, pendingTask: undefined }); expect(s.pendingTask).toBeUndefined();
+    expect(s.snapshot).toBe(from.snapshot); expect(s.repoSnapshot).toBe(from.repoSnapshot);
+    expect(reduce(s, { type: "open-task-failed" })).toBe(s);                 // nothing pending: the same state
+  });
   test("a pending task missing from its workstream's snapshot is dropped, and select-ws / select-repo clear repo selections", () => {
     let s = reduce({ ...initialState, pendingTask: { ws: "next", taskId: "T-009" } }, { type: "snapshot", data: wsSnap("next", []) });
     expect(s.pendingTask).toBeUndefined(); expect(s.selectedTask).toBeUndefined();

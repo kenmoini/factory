@@ -5,8 +5,9 @@ import { Kanban } from "./components/Kanban";
 import { Mockups } from "./components/Mockups";
 import { Repo } from "./components/Repo";
 import { TaskDrawer } from "./components/TaskDrawer";
-import { dispatch, store, useStore } from "./lib/store";
+import { dispatch, useStore } from "./lib/store";
 import { connect } from "./lib/stream";
+import { switchWorkstream } from "./lib/workstream";
 import type { WorkstreamSnapshot } from "../src/shared/types";
 
 /** `noteId` is missing for a workstream the plugin has not linked to its Trilium note yet. */
@@ -88,13 +89,9 @@ function Header({ repos, current, snapshot }: { repos: RepoInfo[] | null; curren
 
   const chooseWorkstream = async (slug: string) => {
     if (!current) return;
-    const repo = current.repoPath;
     setSwitching(slug);
     dispatch({ type: "select-ws", data: slug });
-    try {
-      const res = await fetch(`/api/state?repo=${encodeURIComponent(repo)}&ws=${encodeURIComponent(slug)}`, { cache: "no-store" });
-      if (res.ok && store.getState().repo === repo) dispatch({ type: "snapshot", data: (await res.json()) as WorkstreamSnapshot });
-    } catch { /* the stream delivers the snapshot once the poller catches up */ }
+    await switchWorkstream(current.repoPath, slug);
     setSwitching(undefined);
   };
 
