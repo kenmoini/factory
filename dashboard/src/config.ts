@@ -6,7 +6,7 @@ import { join } from "node:path";
  * a global fallback for repos without one: FACTORY_TRILIUM_URL / FACTORY_ETAPI_TOKEN, or legacy `config.json` keys.
  * `tlsVerify`: FACTORY_TLS_VERIFY=1; off by default, so a self-signed Trilium certificate is accepted.
  */
-export interface DashboardConfig { port: number; pollMs: number; configDir: string; homeDir: string; tlsVerify: boolean; triliumUrl?: string; etapiToken?: string }
+export interface DashboardConfig { port: number; pollMs: number; gitPollMs: number; configDir: string; homeDir: string; tlsVerify: boolean; triliumUrl?: string; etapiToken?: string }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): DashboardConfig {
   const homeDir = env.HOME ?? "";
@@ -26,6 +26,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): DashboardConfi
   const config: DashboardConfig = {
     port: num(env.FACTORY_DASHBOARD_PORT ?? file.dashboardPort, 7777),
     pollMs: num(env.FACTORY_POLL_MS, 3000),
+    gitPollMs: num(env.FACTORY_GIT_POLL_MS, 5000),
     configDir,
     homeDir,
     tlsVerify: env.FACTORY_TLS_VERIFY === "1",

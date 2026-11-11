@@ -129,7 +129,7 @@ async function readUntil(reader: ReadableStreamDefaultReader<Uint8Array>, pred: 
  * FACTORY_ETAPI_TOKEN; the process env is never read). `tls` records the TLS option of every Trilium request.
  */
 function boot(homeDir = "", opts: { heartbeatMs?: number; now?: () => number; sweepMs?: number } = {}, registry = new AgentRegistry(), env: Record<string, string> = {}, tlsVerify = false) {
-  const config: DashboardConfig = { port: 0, pollMs: 60000, configDir: "", homeDir, tlsVerify };
+  const config: DashboardConfig = { port: 0, pollMs: 60000, gitPollMs: 60000, configDir: "", homeDir, tlsVerify };
   const hub = new EventHub();
   const tls: unknown[] = [];
   const fetchImpl = ((url: any, init: any) => { tls.push(init?.tls); return fetch(url, init); }) as typeof fetch;
