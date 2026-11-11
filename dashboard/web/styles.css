@@ -26,6 +26,13 @@
   --changes-wash: rgba(242, 124, 118, .14);
   --pending: #A9AEB4;
   --pending-wash: rgba(169, 174, 180, .13);
+  /* app: Repo tab branch rails, one colour per lane (lane 0, the default branch, is --rail-0) */
+  --rail-0: #8FB7E8;
+  --rail-1: #D9A066;
+  --rail-2: #C79CF0;
+  --rail-3: #6FC2C8;
+  --rail-4: #E58FB3;
+  --rail-5: #A3B86C;
   --f-text: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
   --f-cond: "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", "Avenir Next", system-ui, sans-serif;
   --f-code: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -414,6 +421,64 @@ main { position: relative; min-height: 0; min-width: 0; }
 .round-pick:hover { color: var(--ink); border-color: #50565C; }
 .round-pick[aria-pressed="true"] { color: var(--ink); border-color: var(--ink); }
 
+/* ==========================================================================
+   app: Repo tab (ported from dashboard/mockup/repo.html): toolbar, branch rails, commit rows, chips
+   ========================================================================== */
+.repo-panel { position: relative; height: 100%; overflow: hidden; }
+.repo-scroll { height: 100%; overflow: auto; padding: 10px var(--pad) 20px; }
+.drawer-open .repo-scroll { margin-right: var(--drawer-w); }
+.repo-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 4px 10px; border-bottom: 1px solid var(--rule-soft); font-size: 12.5px; color: var(--ink-2); }
+.repo-toolbar .pick select { padding: 4px 26px 4px 9px; font-size: 12.5px; }
+.repo-toolbar .doc-retry { padding: 4px 10px; font-size: 12.5px; }
+.repo-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-left: auto; font-size: 11px; color: var(--ink-3); }
+.rail-legend { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.rail-legend i { width: 8px; height: 8px; border-radius: 50%; background: var(--chip, var(--ink-3)); }
+.repo-status { margin: 8px 4px 0; font-size: 12.5px; color: var(--changes); }
+
+.rail { display: grid; grid-template-columns: auto 1fr; align-items: start; }
+.rail-svg { display: block; }
+/* isolate: the rows' z-indexed click overlays stay below the commit drawer that opens over the panel */
+.rail-rows { min-width: 0; isolation: isolate; }
+.rail-rows li {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px 0 4px;
+  border-bottom: 1px solid var(--rule-soft);
+  color: var(--ink-2);
+}
+.rail-rows li:hover { background: var(--bay); }
+.rail-rows li[aria-selected="true"] { background: var(--plate); box-shadow: inset 3px 0 0 var(--lamp); }
+.rail-rows li:has(.row-open:focus-visible) { outline: 2px solid var(--ink); outline-offset: -2px; }
+/* the row's button covers the whole row (chips and time included), like the board's card-open */
+.row-open { display: flex; align-items: baseline; gap: 8px; min-width: 0; color: var(--ink); text-align: left; }
+.row-open::after { content: ""; position: absolute; inset: 0; z-index: 1; }
+.row-open:focus-visible { outline: none; }
+.row-sha { flex: none; font: 12px/1.4 var(--f-code); color: var(--ink-3); }
+.row-subject { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; }
+.row-chips { display: flex; align-items: center; gap: 4px; }
+.row-time { min-width: 42px; font-size: 11px; color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px;
+  border: 1px solid var(--chip, var(--rule));
+  border-radius: 999px;
+  background: var(--plate);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--chip, var(--ink-2));
+  white-space: nowrap;
+}
+.chip-wt::before { content: ""; width: 6px; height: 6px; border-radius: 2px; background: currentColor; opacity: .8; }
+.chip-tag { border-style: dashed; }
+.chip-task { color: var(--ink); background: var(--bay); }
+
 @media (max-width: 760px) {
   .agents-panel { overflow: auto; }
   .agents { grid-template-columns: 1fr; height: auto; }
@@ -436,6 +501,7 @@ main { position: relative; min-height: 0; min-width: 0; }
   .lanes { grid-template-columns: repeat(7, 220px); }
   :root { --drawer-w: 100%; }
   .drawer-open .board-scroll { margin-right: 0; }
+  .drawer-open .repo-scroll { margin-right: 0; }
   .doc-panel { padding: 24px 18px 48px; }
 }
 @media (prefers-reduced-motion: reduce) {

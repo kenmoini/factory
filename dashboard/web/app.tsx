@@ -3,6 +3,7 @@ import { Agents } from "./components/Agents";
 import { DocsTab, findDoc, type DocTab } from "./components/DocsTabs";
 import { Kanban } from "./components/Kanban";
 import { Mockups } from "./components/Mockups";
+import { Repo } from "./components/Repo";
 import { TaskDrawer } from "./components/TaskDrawer";
 import { dispatch, store, useStore } from "./lib/store";
 import { connect } from "./lib/stream";
@@ -23,6 +24,7 @@ export const TABS: TabDef[] = [
   { id: "uiux", label: "UI/UX", kind: "uiux" },
   { id: "api", label: "API", kind: "api-design" },
   { id: "validation", label: "Validation", kind: "validation" },
+  { id: "repo", label: "Repo" },
   { id: "agents", label: "Agents" },
   { id: "mockups", label: "Mockups" },
 ];
@@ -235,6 +237,8 @@ export function App() {
             <Board snapshot={snapshot} repos={repos} failed={failed} />
             {snapshot?.workstream && <TaskDrawer snapshot={snapshot} />}
           </section>
+        ) : def.id === "repo" ? (
+          <Repo repoPath={current?.repoPath} snapshot={snapshot} />
         ) : def.id === "agents" ? (
           <section className="agents-panel" id="panel-agents" role="tabpanel" aria-labelledby="tab-agents">
             <Agents key={current?.repoPath} repo={current?.repoPath} snapshot={snapshot} />
