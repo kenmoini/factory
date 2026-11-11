@@ -233,14 +233,33 @@ async function start(): Promise<number> {
   return 1;
 }
 
+/**
+ * Ends every factory server on the port: the one that answers, the pidfile's when it is another of ours (the pre-probe
+ * daemon could co-bind a duplicate and name it), then whatever of ours still answers, for at most 5 more rounds.
+ */
+async function stopAll(first: number): Promise<number> {
+  const stopped: number[] = [];
+  const end = async (pid: number) => { await terminate(pid); stopped.push(pid); };
+  await end(first);
+  const named = readPid();
+  if (named !== undefined && named !== first && alive(named) && isOurServer(named)) await end(named);
+  for (let round = 0; ; round++) {
+    const found = await probe();
+    if (!ours(found)) break;
+    if (round === 5) {
+      print({ running: true, port, pid: found.pid, error: "could not stop" });
+      return 1;
+    }
+    await end(found.pid);
+  }
+  rmSync(pidFile, { force: true });
+  print({ running: false, stopped: first, ...(stopped.length > 1 ? { alsoStopped: stopped.slice(1) } : {}) });
+  return 0;
+}
+
 async function stop(): Promise<number> {
   const found = await probe();
-  if (ours(found)) {
-    await terminate(found.pid);
-    rmSync(pidFile, { force: true });
-    print({ running: false, stopped: found.pid });
-    return 0;
-  }
+  if (ours(found)) return stopAll(found.pid);
   const pid = readPid();
   if (pid === undefined || !alive(pid)) {
     rmSync(pidFile, { force: true });
@@ -265,8 +284,8 @@ async function main(): Promise<number> {
     case "status": await status(); return 0;
     case "open": openUrl(); print({ url }); return 0;
     case "restart": {
-      await stop();
-      return start();
+      const stopped = await stop();
+      return stopped !== 0 ? stopped : start(); // a server that would not stop must not be adopted as the restart
     }
     default:
       console.error("usage: factory-dashboard start [--port N] [--open] | stop | status | open | restart");

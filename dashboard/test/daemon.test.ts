@@ -241,6 +241,38 @@ describe("daemon lifecycle", () => {
     } finally { foreign.kill("SIGKILL"); await foreign.exited; }
   }, 30000);
 
+  test("stop ends every factory server on the port: the answering one, the pidfile's and any other", async () => {
+    // the pre-probe daemon could leave this: a duplicate co-bound to the port and named in the pidfile while the first
+    // kept answering; a third, named nowhere, pins that stop keeps probing until no factory server answers
+    const extra: number[] = [];
+    const spawnServer = async () => {
+      // through sh: not this process's child, so once killed it is reaped, not left a zombie that still looks alive
+      const log = join(dir, `extra-${extra.length}.log`);
+      const sh = Bun.spawnSync(["sh", "-c", `"$0" "$1" </dev/null >"$2" 2>&1 & echo $!`, process.execPath, join(import.meta.dir, "../src/server.ts"), log],
+        { env, cwd: join(import.meta.dir, ".."), stdout: "pipe" });
+      const pid = Number(sh.stdout.toString().trim());
+      extra.push(pid);
+      // a co-bound server need not get any connection (macOS picks one), so wait for its log line, not a health answer
+      const listening = () => { try { return readFileSync(log, "utf8").includes("listening on"); } catch { return false; } };
+      for (let i = 0; i < 100 && !listening(); i++) await Bun.sleep(100);
+      return pid;
+    };
+    const a = run("start");
+    try {
+      expect(a.json.running).toBe(true);
+      const b = await spawnServer(), c = await spawnServer();
+      writeFileSync(join(env.FACTORY_CONFIG_DIR, "dashboard.pid"), String(b));
+      const st = run("stop");
+      expect(st.code).toBe(0);
+      expect(st.json.running).toBe(false);
+      expect([st.json.stopped, ...(st.json.alsoStopped ?? [])].sort()).toEqual([a.json.pid, b, c].sort());
+      for (const pid of [a.json.pid, b, c]) expect(alive(pid)).toBe(false);
+      expect(existsSync(join(env.FACTORY_CONFIG_DIR, "dashboard.pid"))).toBe(false);
+    } finally {
+      for (const pid of [a.json?.pid, ...extra]) if (pid && alive(pid)) process.kill(pid, "SIGKILL");
+    }
+  }, 30000);
+
   test("start registers the caller's session from CLAUDE_CODE_SESSION_ID and CLAUDE_PID", async () => {
     const saved = env;
     env = { ...saved, CLAUDE_CODE_SESSION_ID: "d-sess", CLAUDE_PID: String(process.pid) };
