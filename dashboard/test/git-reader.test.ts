@@ -85,6 +85,36 @@ describe("GitReader", () => {
     const broken = new GitReader(root, async () => ({ code: 127, out: "", err: "spawn git ENOENT" }));
     expect((await broken.snapshot()).error).toMatch(/ENOENT/);
   });
+  test("detail: a git failure is an error, only an unknown sha is null", async () => {
+    const down = new GitReader(root, async () => ({ code: 127, out: "", err: "spawn git ENOENT" }));
+    await expect(down.detail("abc1234")).rejects.toThrow(/ENOENT/);
+  });
+  test("a deleted worktree folder does not break the snapshot", async () => {
+    const gone = join(root, ".factory/worktrees/gone");
+    git(root, "worktree", "add", "-q", "-b", "gone", gone);
+    rmSync(gone, { recursive: true, force: true });
+    try {
+      const snap = await new GitReader(root).snapshot();
+      expect(snap.error).toBeUndefined();
+      const b = snap.branches.find((x) => x.name === "gone")!;
+      expect(b).toBeDefined();
+      expect(b.worktree).toBeUndefined();
+    } finally { git(root, "worktree", "prune"); git(root, "branch", "-q", "-D", "gone"); }
+  });
+  test("a tag named like the branch does not hijack the branch filter", async () => {
+    git(root, "tag", "checkout-flow", "main");
+    try {
+      const snap = await new GitReader(root).snapshot({ limit: 10, branch: "checkout-flow" });
+      expect(snap.error).toBeUndefined();
+      expect(snap.commits.map((c) => c.subject)[0]).toBe("feat(address): validation");
+      expect(snap.branches.find((b) => b.name === "checkout-flow")).toMatchObject({ ahead: 1, behind: 1 });
+    } finally { git(root, "tag", "-d", "checkout-flow"); }
+  });
+  test("runGit kills a command whose output passes maxOut (code 125)", async () => {
+    const r = await runGit(["log", "--all"], root, { maxOut: 16 });
+    expect(r.code).toBe(125);
+    expect((await runGit(["log", "--all"], root)).code).toBe(0);
+  });
   test("runGit runs git, and kills a command that outlives its timeout (code 124)", async () => {
     expect((await runGit(["--version"], root)).code).toBe(0);
     // a throwaway repo: the killed `commit --amend` may leave a lock behind

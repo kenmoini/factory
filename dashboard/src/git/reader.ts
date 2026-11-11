@@ -1,12 +1,13 @@
+import { existsSync } from "node:fs";
 import type { CommitDetail, RepoBranch, RepoSnapshot } from "../shared/types";
 import { LOG_FORMAT, fingerprintOf, parseAheadBehind, parseLog, parseNumstat, parseRefs, parseStatusCount, parseWorktrees, toRepoCommit } from "./parse";
 import type { RawCommit, Ref, Worktree } from "./parse";
 
-export type GitRunner = (args: string[], cwd: string, opts?: { timeoutMs?: number; env?: Record<string, string> }) => Promise<{ code: number; out: string; err: string }>;
+export type GitRunner = (args: string[], cwd: string, opts?: { timeoutMs?: number; env?: Record<string, string>; maxOut?: number }) => Promise<{ code: number; out: string; err: string }>;
 export const GIT_TIMEOUT_MS = 10_000;
 export const GIT_MAX_OUT = 8 * 1024 * 1024;
 
-/** Runs git without a shell; never throws. Timeout → code 124, output over `GIT_MAX_OUT` → 125, spawn failure → 127. */
+/** Runs git without a shell; never throws. Timeout → code 124, output over `opts.maxOut` (default `GIT_MAX_OUT`) → 125 (git is killed), spawn failure → 127. */
 export const runGit: GitRunner = async (args, cwd, opts) => {
   let proc: ReturnType<typeof Bun.spawn>;
   try {
@@ -21,13 +22,28 @@ export const runGit: GitRunner = async (args, cwd, opts) => {
   const timeout = new Promise<{ code: number; out: string; err: string }>((resolve) => {
     timer = setTimeout(() => { proc.kill(); resolve({ code: 124, out: "", err: "git timed out" }); }, opts?.timeoutMs ?? GIT_TIMEOUT_MS);
   });
+  const cap = opts?.maxOut ?? GIT_MAX_OUT;
   const finished = (async () => {
-    const [out, err, code] = await Promise.all([new Response(proc.stdout as ReadableStream).text(), new Response(proc.stderr as ReadableStream).text(), proc.exited]);
-    if (out.length > GIT_MAX_OUT) return { code: 125, out: "", err: "git output too large" };
-    return { code, out, err };
+    // bytes are counted as chunks arrive, so a runaway command is killed instead of buffered
+    const [o, e, code] = await Promise.all([readCapped(proc.stdout as ReadableStream<Uint8Array>, cap, () => proc.kill()), readCapped(proc.stderr as ReadableStream<Uint8Array>, cap, () => proc.kill()), proc.exited]);
+    if (o.over || e.over) return { code: 125, out: "", err: "git output too large" };
+    return { code, out: o.text, err: e.text };
   })().catch((e) => ({ code: 127, out: "", err: e instanceof Error ? e.message : String(e) }));
   try { return await Promise.race([finished, timeout]); } finally { clearTimeout(timer); }
 };
+
+/** Reads a stream as text; once more than `cap` bytes arrived it calls `onOver`, stops reading and reports `over`. */
+async function readCapped(stream: ReadableStream<Uint8Array>, cap: number, onOver: () => void): Promise<{ text: string; over: boolean }> {
+  const reader = stream.getReader(), dec = new TextDecoder();
+  let text = "", bytes = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return { text: text + dec.decode(), over: false };
+    bytes += value.byteLength;
+    if (bytes > cap) { onOver(); reader.cancel().catch(() => {}); return { text: "", over: true }; }
+    text += dec.decode(value, { stream: true });
+  }
+}
 
 /** A git command that exited non-zero; `code` is its exit status (or 124/125/127 from `runGit`). */
 export class GitError extends Error {
@@ -71,12 +87,12 @@ export class GitReader {
   }
 
   async aheadBehind(branch: string, base: string): Promise<{ ahead: number; behind: number }> {
-    return parseAheadBehind(await this.git(["rev-list", "--left-right", "--count", `${branch}...${base}`, "--"]));
+    return parseAheadBehind(await this.git(["rev-list", "--left-right", "--count", `refs/heads/${branch}...refs/heads/${base}`, "--"]));
   }
 
   /** Newest `limit` commits (date order) of all branches or one; `truncated` when more existed. */
   async log(opts: { limit: number; branch?: string }): Promise<{ commits: RawCommit[]; truncated: boolean }> {
-    const scope = opts.branch ? [opts.branch] : ["--branches"];
+    const scope = opts.branch ? [`refs/heads/${opts.branch}`] : ["--branches"];
     const all = parseLog(await this.git(["log", "--date-order", "-n", String(opts.limit + 1), `--format=${LOG_FORMAT}`, ...scope, "--"]));
     return { commits: all.slice(0, opts.limit), truncated: all.length > opts.limit };
   }
@@ -84,7 +100,8 @@ export class GitReader {
   /** The commit with body, numstat files and parent summaries; null when `sha` names no commit. */
   async detail(sha: string): Promise<CommitDetail | null> {
     const v = await this.run(["rev-parse", "--verify", "--quiet", `${sha}^{commit}`], this.repoPath);
-    if (v.code !== 0) return null;
+    if (v.code === 1) return null;                       // --verify --quiet: exit 1 means "not a commit"; anything else is git failing
+    if (v.code !== 0) throw new GitError(v.err.trim() || "git failed", v.code);
     const full = v.out.trim();
     const [raw] = parseLog(await this.git(["log", "-n", "1", `--format=${LOG_FORMAT}`, full, "--"]));
     if (!raw) return null;
@@ -109,11 +126,13 @@ export class GitReader {
       const refs = await this.refs();
       const defaultBranch = GitReader.defaultBranch(refs);
       const worktrees = await this.worktrees();
+      // a prunable worktree whose folder is gone is skipped; one whose status fails counts as clean
+      const live = worktrees.filter((w) => !w.bare && existsSync(w.path));
       const dirtyOf = new Map<string, number>();
-      await Promise.all(worktrees.filter((w) => !w.bare).map(async (w) => { dirtyOf.set(w.path, await this.dirty(w.path)); }));
+      await Promise.all(live.map(async (w) => { dirtyOf.set(w.path, await this.dirty(w.path).catch(() => 0)); }));
       const branches: RepoBranch[] = await Promise.all(refs.filter((r) => r.kind === "branch").map(async (r) => {
         const b: RepoBranch = { name: r.name, sha: r.sha, isDefault: r.name === defaultBranch, ahead: 0, behind: 0 };
-        const w = worktrees.find((x) => !x.bare && !x.detached && x.branch === r.name);
+        const w = live.find((x) => !x.detached && x.branch === r.name);
         if (w) b.worktree = { path: w.path, dirty: dirtyOf.get(w.path) ?? 0 };
         if (!b.isDefault) Object.assign(b, await this.aheadBehind(r.name, defaultBranch));
         return b;
@@ -122,7 +141,7 @@ export class GitReader {
       const tips = tipsOf(refs);
       return {
         repoPath: this.repoPath, defaultBranch, branches, commits: commits.map((c) => toRepoCommit(c, tips)), limit, truncated,
-        fingerprint: fingerprintOf(refs, worktrees.filter((w) => !w.bare).map((w) => ({ path: w.path, head: w.head, dirty: dirtyOf.get(w.path) ?? 0 }))),
+        fingerprint: fingerprintOf(refs, live.map((w) => ({ path: w.path, head: w.head, dirty: dirtyOf.get(w.path) ?? 0 }))),
       };
     } catch (e) {
       return { repoPath: this.repoPath, defaultBranch: "main", branches: [], commits: [], limit, truncated: false, fingerprint: "", error: e instanceof Error ? e.message : String(e) };
