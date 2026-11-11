@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeFileAtomic } from "../../lib/atomic";
@@ -21,5 +21,17 @@ describe("writeFileAtomic", () => {
     expect(readFileSync(f, "utf8")).toBe("new");
     expect(statSync(f).mode & 0o777).toBe(0o600);
     expect(readdirSync(dir)).toEqual(["b.json"]);
+  });
+  test("writes through a symlink: the target gets the content and keeps its mode, the link stays", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atomic-"));
+    const real = join(dir, "real.json");
+    const link = join(dir, "link.json");
+    writeFileSync(real, "old"); chmodSync(real, 0o600);
+    symlinkSync("real.json", link);
+    writeFileAtomic(link, "new");
+    expect(readFileSync(real, "utf8")).toBe("new");
+    expect(statSync(real).mode & 0o777).toBe(0o600);
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(readdirSync(dir).sort()).toEqual(["link.json", "real.json"]);
   });
 });
