@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Factory dashboard — Repo tab mockup (approved 2026-11-10, option A “Rail”)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+.gv{--floor:#1C1E21;--bay:#222528;--plate:#2B2F33;--drawer:#25282C;--rule:#3B4045;--rule-soft:#30353A;--ink:#ECE8E1;--ink-2:#B5B9BE;--ink-3:#969BA1;--lamp:#F2C14E;--lamp-wash:rgba(242,193,78,.1);--pass:#7CC795;--pass-wash:rgba(124,199,149,.14);--changes:#F27C76;--pending:#A9AEB4;--main:#8FB7E8;--cf:#F2C14E;--ba:#C79CF0;--ah:#7F8790;
+  background:var(--floor);color:var(--ink);font:400 13px/1.4 "Avenir Next",Avenir,"Segoe UI",system-ui,sans-serif;border:1px solid var(--rule);border-radius:8px;overflow:hidden;position:relative;height:560px;display:grid;grid-template-rows:auto 1fr;color-scheme:dark;text-align:left}
+.gv *{box-sizing:border-box}
+.gv .chrome{display:flex;align-items:center;gap:14px;padding:8px 14px;background:var(--bay);border-bottom:1px solid var(--rule);font-size:12px;color:var(--ink-2)}
+.gv .brand{font:600 13px/1 "Avenir Next Condensed","Roboto Condensed","Arial Narrow",system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--ink)}
+.gv .tabs{display:flex;gap:2px;margin-left:8px}
+.gv .tab{padding:5px 9px;border-radius:5px;color:var(--ink-3)}
+.gv .tab.on{background:var(--plate);color:var(--ink)}
+.gv .conn{margin-left:auto;display:flex;align-items:center;gap:6px;color:var(--ink-3)}
+.gv .dot{width:7px;height:7px;border-radius:50%;background:var(--pass)}
+.gv .body{position:relative;overflow:hidden;display:grid;grid-template-columns:1fr var(--dw,360px)}
+.gv .main{overflow:hidden;position:relative}
+.gv .toolbar{display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--rule-soft);font-size:12px;color:var(--ink-2)}
+.gv .toolbar .pick{background:var(--plate);border:1px solid var(--rule);border-radius:5px;padding:3px 8px;color:var(--ink)}
+.gv .toolbar .sp{flex:1}
+.gv .legend{display:flex;gap:10px;font-size:11px;color:var(--ink-3)}
+.gv .legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:middle}
+.gv code,.gv .sha{font:12px ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.gv .sha{color:var(--ink-3)}
+.gv .chip{display:inline-flex;align-items:center;gap:5px;padding:1px 7px;border-radius:999px;border:1px solid var(--rule);font-size:11px;color:var(--ink-2);background:var(--plate);white-space:nowrap}
+.gv .chip.main{border-color:var(--main);color:var(--main)}
+.gv .chip.cf{border-color:var(--cf);color:var(--cf)}
+.gv .chip.ba{border-color:var(--ba);color:var(--ba)}
+.gv .chip.wt::before{content:"";width:6px;height:6px;border-radius:2px;background:currentColor;opacity:.8}
+.gv .chip.tag{border-style:dashed;color:var(--ink-2)}
+.gv .chip.task{color:var(--ink);border-color:var(--rule);background:var(--bay)}
+.gv .pulse{width:7px;height:7px;border-radius:50%;background:var(--lamp);box-shadow:0 0 0 3px var(--lamp-wash);display:inline-block}
+/* drawer */
+.gv .drawer{background:var(--drawer);border-left:1px solid var(--rule);box-shadow:-28px 0 40px -28px rgba(0,0,0,.7);display:flex;flex-direction:column;overflow:hidden}
+.gv .dh{padding:12px 14px 10px;border-bottom:1px solid var(--rule)}
+.gv .dtop{display:flex;align-items:flex-start;gap:8px}
+.gv .dtop h3{font:600 14px/1.3 inherit;color:var(--ink);flex:1}
+.gv .close{color:var(--ink-3);font-size:18px;line-height:1}
+.gv .facts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;font-size:11px;color:var(--ink-3);align-items:center}
+.gv .db{padding:4px 14px 14px;overflow:auto;font-size:12px}
+.gv .sec{padding:10px 0;border-bottom:1px solid var(--rule-soft)}
+.gv .sec h4{font:600 11px/1 "Avenir Next Condensed","Roboto Condensed",system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin:0 0 8px}
+.gv .msg{white-space:pre-wrap;color:var(--ink-2);font-size:12px}
+.gv .files li{display:flex;gap:8px;padding:3px 0;font:12px ui-monospace,"SF Mono",Menlo,monospace;color:var(--ink-2)}
+.gv .files li span:first-child{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gv .plus{color:var(--pass)}.gv .minus{color:var(--changes)}
+.gv .kv{display:grid;grid-template-columns:92px 1fr;gap:4px 10px;color:var(--ink-2)}
+.gv .kv b{color:var(--ink-3);font-weight:500}
+.gv .lnk{color:var(--main)}
+.gv .btns{display:flex;gap:6px;margin-top:10px}
+.gv .btn{border:1px solid var(--rule);background:var(--plate);border-radius:5px;padding:4px 9px;font-size:12px;color:var(--ink)}
+.gv .parents a{display:block;color:var(--ink-2);padding:2px 0}
+.gv .parents .sha{color:var(--main)}
+.gv ul{margin:0;padding:0;list-style:none}
+/* A: rail list */
+.gv .rail{display:grid;grid-template-columns:96px 1fr;height:100%;overflow:hidden}
+.gv .rail svg{display:block}
+.gv .rows{display:block}
+.gv .row{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;height:36px;padding:0 12px 0 4px;border-bottom:1px solid var(--rule-soft);color:var(--ink-2)}
+.gv .row.sel{background:var(--plate);box-shadow:inset 3px 0 0 var(--lamp)}
+.gv .row .m{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--ink)}
+.gv .row .m .sha{margin-right:8px}
+.gv .row .t{color:var(--ink-3);font-size:11px;min-width:42px;text-align:right}
+.gv .row .c{display:flex;gap:4px}
+/* B: swimlanes */
+.gv .lanes{display:grid;grid-template-columns:170px 1fr;height:100%}
+.gv .lanehead{border-right:1px solid var(--rule);background:var(--bay)}
+.gv .lh{height:88px;padding:10px 12px;border-bottom:1px solid var(--rule-soft);font-size:12px;display:flex;flex-direction:column;gap:4px;justify-content:center}
+.gv .lh b{font-weight:600;color:var(--ink)}
+.gv .lh .p{color:var(--ink-3);font:11px ui-monospace,"SF Mono",Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gv .lh .s{font-size:11px;color:var(--ink-3)}
+.gv .lanecanvas{position:relative;overflow:hidden}
+.gv .lanecanvas svg{display:block}
+.gv .axis{position:absolute;left:0;right:0;top:0;height:18px;display:flex;justify-content:space-between;padding:0 14px;font-size:10px;color:var(--ink-3);letter-spacing:.04em;text-transform:uppercase}
+/* C: trunk canvas */
+.gv .canvas{position:relative;height:100%;overflow:hidden;background:
+  radial-gradient(circle at 1px 1px,rgba(255,255,255,.045) 1px,transparent 1.5px) 0 0/22px 22px}
+.gv .canvas svg{display:block}
+.gv .zoom{position:absolute;left:12px;bottom:12px;display:flex;flex-direction:column;gap:4px}
+.gv .zoom span{width:26px;height:26px;display:grid;place-items:center;background:var(--plate);border:1px solid var(--rule);border-radius:5px;color:var(--ink-2);font-size:14px}
+.gv .mini{position:absolute;right:12px;bottom:12px;width:120px;height:70px;background:rgba(34,37,40,.9);border:1px solid var(--rule);border-radius:5px}
+.gv .mini i{position:absolute;left:28px;top:14px;width:48px;height:38px;border:1px solid var(--lamp);border-radius:2px}
+.gv text{font:11px "Avenir Next",Avenir,"Segoe UI",system-ui,sans-serif;fill:var(--ink-2)}
+.gv text.mono{font:11px ui-monospace,"SF Mono",Menlo,monospace;fill:var(--ink-3)}
+.gv text.lbl{fill:var(--ink)}
+.gv .hint{position:absolute;left:12px;top:10px;font-size:11px;color:var(--ink-3)}
+</style>
+<style>body{margin:0;background:#141618;padding:24px;font:14px/1.4 "Avenir Next",Avenir,"Segoe UI",system-ui,sans-serif;color:#ECE8E1} .gv{height:600px;max-width:1180px} p{max-width:1180px;color:#B5B9BE}</style>
+</head>
+<body>
+<p>Repo tab, option A “Rail”: newest commit on top, one coloured rail per branch, merges curve into <code>main</code>; clicking a row opens the commit drawer from the right (the Kanban task drawer pattern). Chips: branch heads, tags, task ids; the lamp pulse marks a branch a builder is working on.</p>
+<div class="gv">
+      <div class="chrome"><span class="brand">Factory</span><span>acme-shop · checkout-flow</span>
+        <div class="tabs"><span class="tab">Board</span><span class="tab">Goal</span><span class="tab">Spec</span><span class="tab">Plan</span><span class="tab on">Repo</span><span class="tab">Agents</span><span class="tab">Mockups</span></div>
+        <span class="conn"><span class="dot"></span>live</span></div>
+      <div class="body">
+        <div class="main">
+          <div class="toolbar"><span class="pick">All branches ▾</span><span class="pick">Last 50 commits ▾</span><span class="sp"></span>
+            <span class="legend"><span><i style="background:var(--main)"></i>main</span><span><i style="background:var(--cf)"></i>checkout-flow · worktree</span><span><i style="background:var(--ba)"></i>billing-api · worktree</span></span></div>
+          <div class="rail">
+            <svg width="96" height="324" viewBox="0 0 96 324" aria-hidden="true">
+              <g fill="none" stroke-width="2">
+                <path d="M18 18 V306" stroke="var(--main)"/>
+                <path d="M18 306 C18 288 46 288 46 270" stroke="var(--cf)"/>
+                <path d="M46 270 V54" stroke="var(--cf)"/>
+                <path d="M46 270 C46 234 18 234 18 198" stroke="var(--cf)" opacity=".7"/>
+                <path d="M46 90 C46 54 18 54 18 18" stroke="var(--cf)" opacity=".7"/>
+                <path d="M18 306 C18 270 74 270 74 234" stroke="var(--ba)"/>
+                <path d="M74 234 V126" stroke="var(--ba)"/>
+              </g>
+              <g stroke-width="2" fill="var(--floor)">
+                <circle cx="18" cy="18" r="5" stroke="var(--main)"/>
+                <circle cx="46" cy="54" r="6" stroke="var(--cf)" fill="var(--cf)"/>
+                <circle cx="46" cy="90" r="5" stroke="var(--cf)"/>
+                <circle cx="74" cy="126" r="6" stroke="var(--ba)" fill="var(--ba)"/>
+                <circle cx="46" cy="162" r="5" stroke="var(--cf)"/>
+                <circle cx="18" cy="198" r="5" stroke="var(--main)"/>
+                <circle cx="74" cy="234" r="5" stroke="var(--ba)"/>
+                <circle cx="46" cy="270" r="5" stroke="var(--cf)"/>
+                <circle cx="18" cy="306" r="5" stroke="var(--main)"/>
+              </g>
+              <circle cx="46" cy="54" r="10" fill="none" stroke="var(--lamp)" opacity=".5"/>
+            </svg>
+            <ul class="rows">
+              <li class="row"><span class="m"><span class="sha">5e3057b</span>Merge checkout-flow: T-002 Address form validation</span><span class="c"><span class="chip main">main</span><span class="chip tag">v0.3.0</span></span><span class="t">2m</span></li>
+              <li class="row sel"><span class="m"><span class="sha">f6a7b8c</span>feat(payment): create Stripe payment intent</span><span class="c"><span class="chip cf wt">checkout-flow</span><span class="chip task">T-003</span><span class="pulse" title="builder working"></span></span><span class="t">5m</span></li>
+              <li class="row"><span class="m"><span class="sha">e5f6a7b</span>fix(address): postcode regex per review R2</span><span class="c"><span class="chip task">T-002</span></span><span class="t">12m</span></li>
+              <li class="row"><span class="m"><span class="sha">2233445</span>feat(invoice): PDF export</span><span class="c"><span class="chip ba wt">billing-api</span><span class="chip task">T-005</span></span><span class="t">18m</span></li>
+              <li class="row"><span class="m"><span class="sha">d4e5f6a</span>feat(address): validation rules</span><span class="c"><span class="chip task">T-002</span></span><span class="t">25m</span></li>
+              <li class="row"><span class="m"><span class="sha">9f1a2b0</span>Merge checkout-flow: T-001 Cart summary component</span><span class="c"><span class="chip main">main</span></span><span class="t">41m</span></li>
+              <li class="row"><span class="m"><span class="sha">1122334</span>feat(invoice): model and migrations</span><span class="c"><span class="chip task">T-004</span></span><span class="t">48m</span></li>
+              <li class="row"><span class="m"><span class="sha">a1b2c3d</span>feat(cart): summary component</span><span class="c"><span class="chip task">T-001</span></span><span class="t">1h</span></li>
+              <li class="row"><span class="m"><span class="sha">c24e852</span>chore: enforce standards</span><span class="c"><span class="chip main">main</span></span><span class="t">2h</span></li>
+            </ul>
+          </div>
+        </div>
+        <aside class="drawer">
+          <div class="dh"><div class="dtop"><h3>feat(payment): create Stripe payment intent</h3><span class="close">×</span></div>
+            <div class="facts"><span class="sha">f6a7b8c</span><span class="chip cf wt">checkout-flow</span><span class="chip task">T-003 Payment step</span><span class="pulse"></span><span>builder · R1 · 5 min ago</span></div></div>
+          <div class="db">
+            <div class="sec"><h4>Worktree</h4><div class="kv"><b>path</b><span><code>.factory/worktrees/checkout-flow</code></span><b>vs main</b><span>2 ahead · 0 behind</span><b>working tree</b><span>3 files modified, not committed</span><b>agent</b><span>builder (opus) · live</span></div></div>
+            <div class="sec"><h4>Message</h4><div class="msg">feat(payment): create Stripe payment intent
+
+Adds the PaymentIntent call behind the checkout
+service and the webhook stub. [task:T-003]</div></div>
+            <div class="sec"><h4>Changes · 4 files · <span class="plus">+212</span> <span class="minus">−8</span></h4><ul class="files"><li><span>src/checkout/payment.ts</span><span class="plus">+140</span><span class="minus">−2</span></li><li><span>src/checkout/webhooks.ts</span><span class="plus">+48</span></li><li><span>test/checkout/payment.test.ts</span><span class="plus">+24</span></li><li><span>package.json</span><span class="minus">−6</span></li></ul></div>
+            <div class="sec"><h4>Factory</h4><div class="kv"><b>task</b><span class="lnk">T-003 Payment step → open on board</span><b>milestone</b><span>M2 Checkout</span><b>status</b><span>building · round 1</span><b>spec</b><span class="lnk">Task Spec in Trilium</span></div></div>
+            <div class="sec parents"><h4>Parents</h4><a><span class="sha">e5f6a7b</span> fix(address): postcode regex per review R2</a></div>
+            <div class="btns"><span class="btn">Copy sha</span><span class="btn">Show diff</span><span class="btn">git log on branch</span></div>
+          </div>
+        </aside>
+      </div>
+    
+</body>
+</html>
