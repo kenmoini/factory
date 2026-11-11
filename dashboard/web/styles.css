@@ -479,6 +479,33 @@ main { position: relative; min-height: 0; min-width: 0; }
 .chip-tag { border-style: dashed; }
 .chip-task { color: var(--ink); background: var(--bay); }
 
+/* Repo tab: commit drawer (the task drawer's .drawer, .drawer-head, .section; details from dashboard/mockup/repo.html).
+   The .drawer-open squeeze for .repo-scroll sits with the Repo tab rules above. */
+.commit-drawer .drawer-top strong { font: 600 12.5px/1 var(--f-code); color: var(--ink-3); }
+.commit-drawer h2 { font-size: 20px; overflow-wrap: anywhere; }
+.drawer-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.commit-by { font-size: 12.5px; color: var(--ink-3); }
+.kv { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 4px 10px; margin: 0; font-size: 13px; color: var(--ink-2); }
+.kv + .kv { margin-top: 10px; }
+.kv dt { color: var(--ink-3); }
+.kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.kv b { font-weight: 600; color: var(--ink); }
+.kv .ms-chip { display: inline-block; max-width: 100%; vertical-align: middle; }
+.kv .round { display: inline-block; margin-left: 8px; }
+.commit-tasks li + li { margin-top: 14px; }
+.commit-tasks .doc-retry { margin-top: 8px; }
+.commit-body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px/1.5 var(--f-code); color: var(--ink-2); }
+.files li { display: flex; gap: 8px; padding: 3px 0; font: 12px var(--f-code); color: var(--ink-2); }
+.files .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.files .bin { color: var(--ink-3); }
+.plus { color: var(--pass); }
+.minus { color: var(--changes); }
+.parent-open { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; font-size: 13px; color: var(--ink-2); text-align: left; overflow-wrap: anywhere; }
+.parent-open:hover { color: var(--ink); }
+.parent-open .row-sha { color: var(--rail-0); }
+.drawer-btns { display: flex; gap: 6px; margin-top: 12px; }
+.drawer-btns .doc-retry:disabled { opacity: .5; cursor: default; }
+
 @media (max-width: 760px) {
   .agents-panel { overflow: auto; }
   .agents { grid-template-columns: 1fr; height: auto; }

@@ -3,6 +3,7 @@ import type { LiveAgent, RepoBranch, RepoCommit, RepoSnapshot, WorkstreamSnapsho
 import { formatAgo, useNow } from "../lib/clock";
 import { layoutRail, type RailLayout } from "../lib/rail";
 import { DEFAULT_REPO_VIEW, dispatch, useStore, type RepoView } from "../lib/store";
+import { CommitDrawer } from "./CommitDrawer";
 import { laneColour, Rail } from "./Rail";
 
 const LIMITS = [50, 100, 200];
@@ -111,6 +112,26 @@ function BranchChip({ name, colour, branch }: { name: string; colour: string; br
   );
 }
 
+export interface CommitChipsProps { commit: RepoCommit; colour: string; branches: Map<string, RepoBranch>; live: Set<string>; workstream?: string }
+
+/**
+ * A commit's chips, shared by its row and the commit drawer: tip branches in the commit's rail colour (worktree mark,
+ * dirty count), tags, task ids (`T-003` for the on-screen workstream, else `slug/T-003`), and the lamp pulse while an
+ * agent works on one of its branches.
+ */
+export function CommitChips({ commit, colour, branches, live, workstream }: CommitChipsProps) {
+  return (
+    <>
+      {commit.branches.map((name) => <BranchChip key={name} name={name} colour={colour} branch={branches.get(name)} />)}
+      {commit.tags.map((t) => <span key={t} className="chip chip-tag"><span className="sr">tag </span>{t}</span>)}
+      {commit.tasks.map((t) => (
+        <span key={`${t.slug}/${t.taskId}`} className="chip chip-task">{t.slug === workstream ? t.taskId : `${t.slug}/${t.taskId}`}</span>
+      ))}
+      {commit.branches.some((b) => live.has(b)) && <span className="pulse" aria-hidden="true" />}
+    </>
+  );
+}
+
 /** What the row's chips show that a screen reader should hear on focus: tip branches, worktree state, a live agent. */
 function rowNote(commit: RepoCommit, branches: Map<string, RepoBranch>, live: Set<string>): string {
   const parts = commit.branches.map((name) => {
@@ -128,7 +149,6 @@ interface RowProps {
 }
 
 const Row = memo(function Row({ commit, colour, ago, selected, tabbable, branches, live, workstream }: RowProps) {
-  const isLive = commit.branches.some((b) => live.has(b));
   const note = rowNote(commit, branches, live);
   return (
     <li className={selected ? "is-selected" : undefined}>
@@ -145,12 +165,7 @@ const Row = memo(function Row({ commit, colour, ago, selected, tabbable, branche
         {note && <span className="sr">{note}</span>}
       </button>
       <span className="row-chips">
-        {commit.branches.map((name) => <BranchChip key={name} name={name} colour={colour} branch={branches.get(name)} />)}
-        {commit.tags.map((t) => <span key={t} className="chip chip-tag"><span className="sr">tag </span>{t}</span>)}
-        {commit.tasks.map((t) => (
-          <span key={`${t.slug}/${t.taskId}`} className="chip chip-task">{t.slug === workstream ? t.taskId : `${t.slug}/${t.taskId}`}</span>
-        ))}
-        {isLive && <span className="pulse" aria-hidden="true" />}
+        <CommitChips commit={commit} colour={colour} branches={branches} live={live} workstream={workstream} />
       </span>
       <time className="row-time" dateTime={commit.authorTs}>{ago}</time>
     </li>
@@ -253,7 +268,7 @@ export function Repo({ repoPath, snapshot }: { repoPath: string | undefined; sna
           {body}
         </div>
       )}
-      {/* Task 8: mount <CommitDrawer repoPath={repoPath} shown={shown} snapshot={snapshot} /> here, after .repo-scroll */}
+      {repoPath && shown && <CommitDrawer repoPath={repoPath} shown={shown} snapshot={snapshot} layout={layout} branches={branches} live={liveSet} />}
     </section>
   );
 }

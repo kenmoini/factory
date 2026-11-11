@@ -29,3 +29,27 @@ TLS certificates are not verified unless `FACTORY_TLS_VERIFY=1`, so a self-signe
      `curl` `/api/repos` once, and the board loads again (no restart).
 7. `bin/factory-dashboard stop` -> `{"running":false,"stopped":<pid>}`; pidfile gone.
 8. `bin/factory-dashboard status` -> `running: false`.
+
+## Repo tab
+
+With the server running (steps 1-4) against a factory repo that has a worktree branch with an uncommitted file:
+
+1. Open `#/repo` (the Repo tab): the branch rails sit beside the commit rows, newest first. Rail colours, the
+   chips (branch with worktree mark and dirty count, tags, task ids), the dashed ring on a dirty worktree tip and
+   the legend match `dashboard/mockup/repo.html`.
+2. Click a row: the commit drawer slides in from the right with the short sha, chips, subject, author and age,
+   the worktree facts for a worktree tip (path, ahead/behind main, files changed but not committed), Message,
+   Changes (`+`/`−` per file, totals in the heading), Factory and Parents. A Parents button selects that commit.
+3. Press Escape: the drawer closes and focus returns to the row that opened it. With the drawer open,
+   ArrowUp/ArrowDown in the list move the selection and the drawer follows.
+4. While a builder runs, its branch chip pulses in the row and the drawer header shows the pulse. To fake one,
+   post a `subagent-start` event as in step 5 with `"description":"builder T-001 [task:<task note id>]"` in the
+   JSON (the task's Trilium note id, from a task of the workstream on screen); `subagent-stop` ends it.
+5. `Open on board` in the Factory section lands on the board with that task's drawer open. For a `slug/T-xxx` chip
+   (a task of another workstream) it switches the workstream first.
+6. `Copy sha` copies the full sha (the label reads `Copied` for 1.5 s); `Show diff` scrolls to Changes.
+7. With more commits than the limit, `Load more` extends the list.
+8. Pick a branch in the filter, then commit on that branch: the filter survives the new commit arriving (within
+   the 5 s poll) and the new commit shows at the top.
+9. Register a non-git directory via `FACTORY_REPOS` and restart: its Repo tab shows "not a git repository" and
+   the board still works.
