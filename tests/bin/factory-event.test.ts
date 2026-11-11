@@ -47,4 +47,27 @@ describe("factory-event", () => {
     const body = JSON.parse(readFileSync(join(dir, "curl.body"), "utf8"));
     expect(body.event).toBe("stage"); expect("stage" in body).toBe(false);
   });
+  test("session-end posts the hook JSON as payload and prints nothing", async () => {
+    writeFileSync(join(repo, ".factory/config.json"), "{}");
+    const r = await run(["session-end"], readFileSync("tests/fixtures/hooks/session-end.json", "utf8"));
+    expect(r.code).toBe(0); expect(r.out).toBe("");
+    const body = JSON.parse(readFileSync(join(dir, "curl.body"), "utf8"));
+    expect(body.event).toBe("session-end"); expect(body.payload.session_id).toBe("s1"); expect(body.payload.reason).toBe("other");
+  });
+  test("session and pid come from CLAUDE_CODE_SESSION_ID and CLAUDE_PID; pid only when digits", async () => {
+    writeFileSync(join(repo, ".factory/config.json"), "{}");
+    await run(["stage", "--stage", "setup", "--status", "started"], "", { CLAUDE_CODE_SESSION_ID: "abc-1", CLAUDE_PID: "4242" });
+    let body = JSON.parse(readFileSync(join(dir, "curl.body"), "utf8"));
+    expect(body.session).toBe("abc-1"); expect(body.pid).toBe(4242);
+    await run(["stage", "--stage", "setup", "--status", "started"], "", { CLAUDE_CODE_SESSION_ID: "", CLAUDE_PID: "nope" });
+    body = JSON.parse(readFileSync(join(dir, "curl.body"), "utf8"));
+    expect("session" in body).toBe(false); expect("pid" in body).toBe(false);
+  });
+  test("curl is capped at one second", async () => {
+    writeFileSync(join(repo, ".factory/config.json"), "{}");
+    await run(["subagent-stop"], "{}");
+    const args = readFileSync(join(dir, "curl.args"), "utf8").split("\n");
+    expect(args[args.indexOf("-m") + 1]).toBe("1");
+    expect(args[args.indexOf("--connect-timeout") + 1]).toBe("1");
+  });
 });

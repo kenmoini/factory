@@ -55,11 +55,16 @@ build_body() {
   [ -n "$STATUS" ] && printf ',"status":"%s"' "$(json_escape "$STATUS")"
   [ -n "$TASK" ] && printf ',"task":"%s"' "$(json_escape "$TASK")"
   [ -n "$WORKSTREAM" ] && printf ',"workstream":"%s"' "$(json_escape "$WORKSTREAM")"
+  [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] && printf ',"session":"%s"' "$(json_escape "$CLAUDE_CODE_SESSION_ID")"
+  case "${CLAUDE_PID:-}" in
+    ''|*[!0-9]*) ;;
+    *) printf ',"pid":%s' "$CLAUDE_PID" ;;
+  esac
   printf ',"payload":%s}' "$payload"
 }
 
 post() {
-  build_body | curl -s -m 2 --connect-timeout 1 -X POST -H 'Content-Type: application/json' \
+  build_body | curl -s -m 1 --connect-timeout 1 -X POST -H 'Content-Type: application/json' \
     --data-binary @- "http://127.0.0.1:$PORT/api/events" >/dev/null 2>&1 || true
 }
 

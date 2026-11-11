@@ -44,12 +44,21 @@ describe("plugin hooks", () => {
   });
 
   test("SessionStart is sync with matcher and timeout 3", () => {
-    expect(hooks.SessionStart[0].matcher).toBe("startup|clear|compact");
+    expect(hooks.SessionStart[0].matcher).toBe("startup|resume|clear|compact");
     const e = entries("SessionStart");
     expect(e.length).toBe(1);
     expect(e[0].timeout).toBe(3);
     expect("async" in e[0]).toBe(false);
     expect(e[0].command.endsWith(" session-start")).toBe(true);
+  });
+
+  test("SessionEnd is sync with timeout 1 and no matcher", () => {
+    const e = entries("SessionEnd");
+    expect(e.length).toBe(1);
+    expect("matcher" in hooks.SessionEnd[0]).toBe(false);
+    expect(e[0].timeout).toBe(1);
+    expect("async" in e[0]).toBe(false);
+    expect(e[0].command.endsWith(" session-end")).toBe(true);
   });
 });
 
