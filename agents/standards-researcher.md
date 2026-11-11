@@ -27,7 +27,8 @@ The dispatch brief gives absolute paths:
 1. Read `questions.md`, then the examination report or the answers. You have no shell, Glob or Grep: these files
    are your whole view of the project.
 2. List the areas to cover exactly as the questions name them, for example `runtime`, `framework`, `database`,
-   `hosting`, `lint`, `test`, `build`, `api-docs`, `ci`, `artifacts`, `pipelines`, `public-docs`, `other`.
+   `hosting`, `lint`, `test`, `build`, `api-docs`, `ci`, `artifacts`, `pipelines`, `public-docs`, `release`,
+   `hooks`, `security`, `supply-chain`, `coverage`, `dev-env`.
    Keep each technology the questions ask about as its own area; never merge several into one.
 3. Per area, search for the current stable release and the tooling the ecosystem recommends now. Prefer stable
    (or LTS where the ecosystem has one) over pre-releases.

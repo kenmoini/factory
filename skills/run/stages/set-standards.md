@@ -52,8 +52,9 @@ write follows `$PLUGIN_ROOT/skills/run/references/trilium-schema.md` (find or cr
    `<repoPath>/.factory/research/questions.md` (overwrite; the agent reads only its brief's files, so this file
    carries the context): `Stack:` the Goal's Technologies table (one line each); `Constraints:` the Goal's
    Constraints and Out of scope (one line each); "Give one recommendation per area (`runtime`, `lint`, `test`,
-   `build`, `api-docs`, `ci`, `artifacts`, `pipelines`, `public-docs`, `other`) with its current stable version
-   verified on the web, and one or two alternatives per area in the report." Then these questions:
+   `build`, `api-docs`, `ci`, `artifacts`, `pipelines`, `public-docs`, `release`, `hooks`, `security`,
+   `supply-chain`, `coverage`, `dev-env`) with its current stable version verified on the web, and one or two
+   alternatives per area in the report." Then these questions:
    - current stable versions of the runtimes, languages and frameworks (brownfield: the detected ones; flag
      end-of-life versions);
    - recommended lint, format, test and build tools for this stack, with their exact commands;
@@ -61,7 +62,15 @@ write follows `$PLUGIN_ROOT/skills/run/references/trilium-schema.md` (find or cr
    - packaging norms: container image (Containerfile, base image), standalone binary, Helm chart, package registry;
    - API documentation formats that fit (OpenAPI 3.1, AsyncAPI, GraphQL SDL, protobuf);
    - public docs-site options (plain Markdown in `docs/`, MkDocs Material, Docusaurus, Starlight);
-   - dependency update tooling (Dependabot or Renovate).
+   - dependency update tooling (Dependabot or Renovate);
+   - release automation that fits the stack (release-please, semantic-release, changesets, goreleaser, …) and the
+     commit-message check for Conventional Commits;
+   - git-hook manager (husky + lint-staged, lefthook, pre-commit) and the stack's coverage tool;
+   - security scanners for the stack: SAST (CodeQL or Semgrep), secret scanning (gitleaks), dependency
+     vulnerabilities (osv-scanner or the ecosystem's audit command), image scanning (Trivy);
+   - supply-chain tooling: frozen installs from the lockfile, SBOM (syft), signing and provenance (cosign, GitHub
+     artifact attestations);
+   - toolchain pinning and dev environments (mise, .tool-versions, devcontainer, Nix or devbox).
 
    Dispatch with:
 
@@ -74,34 +83,36 @@ write follows `$PLUGIN_ROOT/skills/run/references/trilium-schema.md` (find or cr
    ```
 
    Read the report at `report_path`; keep the recommendations by area.
-3. **Dialogue**: seven questions in at most four AskUserQuestion calls (A: Q1; B: Q2 + Q3; C: Q4 + Q5; D: Q6 + Q7).
+3. **Dialogue**: Read `$PLUGIN_ROOT/skills/run/references/standards-traits.md`: sixteen questions (Q1–Q6 stack,
+   API docs, CI, artifacts, pipelines, public docs; Q7–Q16 the maturity traits: licence, releases, git hooks,
+   security scanning, supply chain, test policy, repository files, developer environment, architecture decisions,
+   runtime operations), each with a header, options as label + description, the Standards section it fills and
+   its research area. Ask them in five AskUserQuestion calls (A: Q1; B: Q2–Q5; C: Q6–Q9; D: Q10–Q13; E: Q14–Q16);
+   skip Q16 when the reference's applicability rule says so (section `n/a (not a service)`); call A's preamble
+   says once that `Stop` typed via Other on any question stops the stage. There is no free-text catch-all
+   question: anything beyond the listed options comes via Other on the question it belongs to.
    **Option rule** (every question; AskUserQuestion allows at most four options): start from the listed options.
-   Take the brownfield choice detected in `Codebase Examination` (label `(current)`) and the research
-   recommendation for the row's research area (label `(recommended)`; with the version it verified, none when
-   `version` is ""). Each one that matches a listed option: add its label to that option. Each one that does not:
-   with fewer than four options listed it is added as a new option; only when four are listed does it replace the
-   last listed option that has no label (Q7 keeps `Stop`). Order: `(current)` first, then `(recommended)`, then the
-   rest; one choice that is both gets `(current, recommended)`. Any other answer comes via Other.
-
-   | Q | Area → Standards section (research area) | Listed options |
-   |---|---|---|
-   | 1 | Runtime, versions, lint/test/build tools → `runtimes`, `style`, `testing` (`runtime`, `lint`, `test`, `build`) | the research's `runtime` + `lint` + `test` + `build` choices as one option; one or two alternative stacks from the report |
-   | 2 | API documentation → `api_docs` (`api-docs`) | `OpenAPI 3.1 (docs/openapi.yaml)`, `No API`, `GraphQL SDL or .proto files`, `AsyncAPI 3` |
-   | 3 | CI platform → `pipelines` (`ci`) | `Makefile + GitHub Actions (default)`, `None yet`, `Makefile only, no hosted CI`, `Makefile + GitLab CI` |
-   | 4 | Build artifacts, multiSelect → `artifacts` (`artifacts`) | `Container image (Containerfile)`, `Standalone binary`, `Package for a registry`, `Helm chart` (none: via Other) |
-   | 5 | Pipelines, multiSelect → `pipelines`, `dependencies` (`pipelines`); the question also offers, via Other, the opt-in post-merge smoke ("run `#testCmd` on `<main>` after each task merge"; off by default) | `PR checks: lint, test, build`, `Dependency updates (<Dependabot or Renovate, per research>)`, `Release on tag`, `Publish image or chart to a registry` |
-   | 6 | Public docs → `public_docs` (`public-docs`) | `Markdown in docs/ (no site)`, `None`, `Docusaurus`, `MkDocs Material` |
-   | 7 | Other traits, free text → `other` (`other`) | `Nothing else` / `Stop`; via Other: code style, commit convention, licence, branching, security tooling, coverage |
-
-   `Stop` → Stop set-standards.
+   Take the brownfield choice detected in `Codebase Examination` (Maturity table for Q1, Q3, Q6; the Traits row
+   named in the reference for Q7–Q16, none when the examination has no Traits table; a Detected value of `none`
+   labels the question's `None …`/`No …`/`README only` option when it has one and otherwise adds nothing; label
+   `(current)`) and the
+   research recommendation for the question's research area (label `(recommended)`; the verified version goes
+   into the description). Single-select questions: each one that matches a listed option gets its label added;
+   each one that does not: with fewer than four options listed it is added as a new option; only when four are
+   listed does it replace the last listed option that has no label (a `None …`/`No …`/`README only` option is never
+   replaced). MultiSelect questions: a recommendation or current choice labels every option it covers and fills
+   that option's `<tool>`; it never adds or replaces an option. Order: `(current)` first, then `(recommended)`,
+   then the rest; one choice that is both gets `(current, recommended)`. Any other answer comes via Other;
+   `Stop` typed via Other on any question → Stop set-standards.
 4. **Machine values** (shown in step 6):
-   - `ciPlatform`: GitHub Actions → `github-actions`; GitLab CI → `gitlab-ci`; `Makefile only, no hosted CI` or
-     `None yet` → `none`; another platform via Other → its lowercase hyphenated name.
+   - `ciPlatform`: `GitHub Actions` → `github-actions`; `GitLab CI` → `gitlab-ci`; `Makefile only` or `None yet` →
+     `none`; another platform via Other → its lowercase hyphenated name.
    - `lint`, `test`, `build` tool commands: the tool's own command from Q1 (brownfield: the repo's existing script,
      e.g. `npm run lint`), never `make …`. No tool named, or the user said "none yet" → empty string. Never
-     invent a command (SOP 3). `#lintCmd`, `#testCmd`, `#buildCmd` get these tool commands; when Q3 includes a
-     Makefile, enforce-standards re-points them to `make lint|test|build` after it has committed those targets.
-   - `postMergeSmoke`: `true` only when the user opted in (Q5 or Q7 via Other); else `false` (the default: builders
+     invent a command (SOP 3). `#lintCmd`, `#testCmd`, `#buildCmd` get these tool commands; when Q3 is anything but
+     `None yet` (every other option carries a Makefile), enforce-standards re-points them to `make lint|test|build`
+     after it has committed those targets.
+   - `postMergeSmoke`: `true` only when the user opted in (Q5 via Other); else `false` (the default: builders
      already run the tests in the worktree, and `<main>` may lack installed dependencies).
 5. **Draft `Standards`**: Read template `standards.md`, fill every `{{placeholder}}` (`n/a` when not applicable),
    keep lines 1–2, Write `<repoPath>/.factory/research/draft-standards.md`. Fill: `repo_name`; `approved_at` =
@@ -109,11 +120,16 @@ write follows `$PLUGIN_ROOT/skills/run/references/trilium-schema.md` (find or cr
    step 4 values (`none` in the body when empty); one section per area from the answers, with exact tool names, versions and
    file paths; `style` ends with the line `lint: <tool command or none>`, `testing` with `test: <…>`, `artifacts`
    with `build: <…>` (the source enforce-standards uses for Makefile targets); `pipelines` states whether a local
-   `Makefile` with targets lint, test, build is wanted (Q3); `dependencies` = the update tool and cadence from Q5;
-   `other` = Q7; `decision_rows` = one row per area
+   `Makefile` with targets lint, test, build is wanted (Q3: any option but `None yet`); `dependencies` = the update
+   tool and cadence from Q5;
+   the trait placeholders (`licence`, `releases`, `hooks`, `security`, `supply_chain`, `test_policy`, `repo_files`,
+   `dev_env`, `decisions_docs`, `operations`) = the Q7–Q16 answers with the exact tools, files and thresholds the
+   reference's Scaffolding lines name, each chosen option keeping its `(builders apply)` or `(plan applies)` tag
+   from the reference (`n/a (not a service)` for a skipped Q16); `decision_rows` = one row per area
    `| <area> | <choice> | <version or –> | <why> | <other options offered> |`.
-6. **Approve the Standards** (human gate). From the draft, print at most 200 words: area → choice and version, the
-   machine values (with a Makefile: "enforce-standards will point the commands at `make` targets") and the
+6. **Approve the Standards** (human gate). From the draft, print a table of area → choice (and version), one row
+   per section, then the machine values (with a Makefile: "enforce-standards will point the commands at `make`
+   targets") and the
    draft path. AskUserQuestion "Approve these Standards?" — options `Approve` / `Edit (tell me what to change)` /
    `Stop`.
    - `Approve`, in this order:

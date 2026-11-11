@@ -82,11 +82,10 @@ nothing is read from Trilium before step 9.
      commit). Fix (keeps other keys; prints `written` or `invalid`; then `<ignore>`):
      `bun -e 'const fs=require("fs"),[,p]=process.argv,o=v=>v&&typeof v=="object"&&!Array.isArray(v);let j={};try{if(fs.existsSync(p))j=JSON.parse(fs.readFileSync(p,"utf8"))}catch{j=0}if(!o(j)){console.log("invalid");process.exit(1)}j.env={...(o(j.env)?j.env:{}),NODE_TLS_REJECT_UNAUTHORIZED:"0"};fs.mkdirSync(require("path").dirname(p),{recursive:true});fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n");console.log("written")' "<repoPath>/.claude/settings.local.json"`
      (`invalid` → show it, continue without). It takes effect after Claude Code restarts: remember "TLS env written".
-5. **Tools** (`tools.uv`, `graphify.installed`, `tools.superpowers`, `graphify` in your skills list).
+5. **Tools** (`tools.uv`, `graphify.installed`, `tools.superpowers`).
    - Missing items, in install order: uv (`tools.uv=false`): `curl -LsSf https://astral.sh/uv/install.sh | sh` (to
      `~/.local/bin`; PATH rule); Graphify (`graphify.installed=false`): `uv tool install graphifyy` (never `uvx` or
-     pip); Graphify skill (Graphify installed now, or no `graphify` skill listed): `graphify install` (user-level
-     `/graphify` skill + nudge hooks).
+     pip). The factory uses only the `graphify` CLI, so `graphify install` (its user-level skill) is never run.
    - Any missing → tell the user each item, command and target; one AskUserQuestion `Install all listed / Stop setup
      (I'll install them myself)`. Run in order; a failing command → show its last 20 lines, Stop setup.
    - Re-check: preflight `tools.uv=true`, `graphify.installed=true`.

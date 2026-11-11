@@ -24,6 +24,9 @@
 | CI | {{maturity_ci}} | {{ci_evidence}} |
 | Docs | {{maturity_docs}} | {{docs_evidence}} |
 
+## Traits
+{{traits}}
+
 ## Hotspots and risks
 {{risks}}
 

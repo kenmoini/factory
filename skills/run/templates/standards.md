@@ -38,8 +38,35 @@ The labels on this note are authoritative; this table mirrors them.
 ## Dependencies and updates
 {{dependencies}}
 
-## Other traits
-{{other}}
+## Licence
+{{licence}}
+
+## Commits, versioning and releases
+{{releases}}
+
+## Git hooks
+{{hooks}}
+
+## Security scanning
+{{security}}
+
+## Supply chain
+{{supply_chain}}
+
+## Test policy and coverage
+{{test_policy}}
+
+## Repository files
+{{repo_files}}
+
+## Developer environment
+{{dev_env}}
+
+## Architecture decisions
+{{decisions_docs}}
+
+## Runtime operations
+{{operations}}
 
 ## Decisions
 | Area | Choice | Version | Why | Alternatives considered |

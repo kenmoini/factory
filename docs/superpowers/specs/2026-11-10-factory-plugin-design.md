@@ -94,9 +94,9 @@ unmet. `skipped` only comes from an explicit user choice.
 
 **Graphify** (https://github.com/Graphify-Labs/graphify, Apache-2.0, 0.9.105)
 - PyPI `graphifyy`, Python ≥ 3.10; install persistently with `uv tool install graphifyy` (never `uvx`).
-- `graphify install` → user-level `/graphify` skill + nudge hooks; `graphify hook install` → git
+- (`graphify install` places graphify's own `/graphify` skill; the factory does not use it) `graphify hook install` → git
   post-commit/post-checkout/post-merge/post-rewrite hooks that rebuild code-only in a detached process.
-- `/graphify .` full build; `graphify update .` incremental (no LLM); `graphify query|path|explain`;
+- `graphify update .` builds from scratch or incrementally (AST only, no LLM; the `/graphify .` skill build is never used); `graphify query|path|explain`;
   outputs `graphify-out/{graph.json,GRAPH_REPORT.md,graph.html}`.
 
 **Machine:** Claude Code 2.1.322; node 26, npm, pnpm, go, python 3.14, git, jq, gh (not logged in),
@@ -275,7 +275,7 @@ when configured. No overlap with the user's existing Notification/Stop/UserPromp
 
 - **setup**: idempotent checklist — global config (ask URL + token if missing; mode 600) → ETAPI
   `app-info` ≥ 0.106 and `/mcp` probe → `mcp__trilium__*` present (else `/mcp` reconnect) → `uv`
-  (`curl -LsSf https://astral.sh/uv/install.sh | sh`) → `uv tool install graphifyy` → `graphify install`
+  (`curl -LsSf https://astral.sh/uv/install.sh | sh`) → `uv tool install graphifyy`
   → `graphify hook install` → bun (`curl -fsSL https://bun.sh/install | bash`) → superpowers present
   (else tell user `/plugin install superpowers`) → Trilium `#factoryRoot`/`#factoryProject`/Factory Log
   (find or create; cache ids) → `.factory/` + `.gitignore` entries → `bin/factory-dashboard start` →
@@ -307,7 +307,7 @@ when configured. No overlap with the user's existing Notification/Stop/UserPromp
   requirements, security, UX, sequencing/dependencies, standards compliance); write Validation/Round N
   with child notes; `pass` only if no FAIL; on fail present findings and loop back to `plan`.
 - **execute**: the state machine above.
-- **graph**: `graphify-out/` missing → invoke the `graphify` skill (`/graphify .`); else `graphify update .`;
+- **graph**: `graphify update .` whether `graphify-out/` is missing or present (CLI only, no LLM pass);
   ensure git hooks present (`graphify hook install`). Worktrees share `.git/hooks`, so builder commits
   refresh the graph too.
 

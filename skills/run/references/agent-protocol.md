@@ -118,7 +118,8 @@ human must decide.
 ```
 
 **standards-researcher** — one recommendation per area (e.g. `runtime`, `lint`, `test`, `build`, `api-docs`, `ci`,
-`artifacts`, `pipelines`, `public-docs`, `other`); `version` is the current stable version verified on the web, or `""`.
+`artifacts`, `pipelines`, `public-docs`, `release`, `hooks`, `security`, `supply-chain`, `coverage`, `dev-env`); `version` is the current stable
+version verified on the web, or `""`.
 
 ```json
 {"report_path": "/src/app/.factory/research/report.md", "recommendations": [{"area": "runtime", "choice": "Bun", "version": "1.3.2", "why": "Already used by the scripts; native TS test runner"}]}

@@ -51,7 +51,10 @@ live `factory-config get activeWorkstream --repo "<repoPath>"` (never the prefli
      at most 12 per milestone (3 or more where the work allows), ideally ≤ 20 in total (needs more → say so and
      suggest splitting it into workstreams). Every Spec requirement, every UI-UX flow and state and every API
      operation maps to at least one task. Sources: Spec, Plan, UI-UX Spec, API Design; Standards decide tools and
-     test approach.
+     test approach, and each Standards item marked `plan applies` (end-to-end suite, health endpoints, telemetry;
+     `$PLUGIN_ROOT/skills/run/references/standards-traits.md`) maps to a task of its own unless the repo already
+     has it or a task of another workstream covers it (`mcp__trilium__search_notes("#factoryTask
+     #project='<repoName>'")`, titles).
    - Ids `T-001`, `T-002`, … numbered globally in dependency order (a task depends only on lower ids; no cycles; no
      task in an earlier milestone than a task it depends on); task `#order` = its number. Ids are never renumbered or
      reused once written: later additions take the next free id and `#order` carries the execution order.

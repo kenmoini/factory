@@ -14,15 +14,14 @@ Run every `graphify` command from `<repoPath>` (`cd "<repoPath>" && graphify …
 
 ## Procedure
 
-1. **Build or update.** Check `test -s "<repoPath>/graphify-out/graph.json"` (preflight `graphify.outPresent`).
-   - Missing → full build (LLM-assisted, may take minutes): tell the user one line; run `cd "<repoPath>"` in Bash
-     (the session keeps that working directory), then invoke the Skill tool with skill `graphify` and args `.` (the
-     `/graphify .` build; always `.`, never a path). Follow the skill's instructions to the end; continue only when
-     `graph.json` exists.
-     No `graphify` skill in your available skills list → tell the user it loads after `graphify install` and a
-     Claude Code restart (setup step 5 runs `graphify install`); stop the stage (see Stopped below).
-   - Present → `cd "<repoPath>" && graphify update .` (incremental, code only, no LLM). Non-zero exit → show the last
-     20 lines; AskUserQuestion `Full rebuild with the graphify skill / Stop`; full rebuild = the Missing branch.
+1. **Build or update** (CLI only: the factory never invokes the user-level `graphify` skill, whose semantic pass
+   dispatches extraction subagents over docs and images and spends tokens the code graph does not need). Mode =
+   `full build` when `graphify-out/graph.json` is missing before this step (preflight `graphify.outPresent=false`;
+   confirm with `test -s`), else `update`. Run `cd "<repoPath>" && graphify update .` (Bash timeout 600000): AST
+   extraction of code plus Markdown headings, no LLM. Ignore its closing tip about `/graphify --update`. Output
+   `No code files found` → Stopped (`no code to graph`). It refuses because the rebuild has fewer nodes →
+   `cd "<repoPath>" && graphify update . --force` (files were deleted). Any other non-zero exit → show the last 20
+   lines; Stopped (`graph update failed`).
 2. **Verify output.** `test -s "<repoPath>/graphify-out/graph.json" && test -s "<repoPath>/graphify-out/GRAPH_REPORT.md"`;
    fails → Stopped (`graph build produced no output`).
    - `git -C "<repoPath>" check-ignore -q graphify-out/graph.json` fails → append `graphify-out/` to

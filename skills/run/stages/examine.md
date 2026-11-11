@@ -103,9 +103,9 @@ with the user and ends with an approved `Goal` note (plus `Codebase Examination`
 6. **Draft `Codebase Examination`**: fill template `examination.md` into
    `<repoPath>/.factory/examine/draft-examination.md` from the json and the report: `head_sha` =
    `git -C "<repoPath>" rev-parse HEAD` (`none` when preflight `git.hasCommits=false`), `examined_at` = `<ISO ts>`,
-   `report_path`, the four maturity levels with their evidence, `risks`, and `graph_status` = whether the examiner
-   used the graph or fell back to Grep (its summary says which). Print the Maturity table, languages, frameworks,
-   entry points and the top three risks.
+   `report_path`, the four maturity levels with their evidence, `traits` = the report's Traits table, `risks`,
+   and `graph_status` = whether the examiner used the graph or fell back to Grep (its summary says which). Print
+   the Maturity table, languages, frameworks, entry points and the top three risks.
 7. **Brownfield goal.** Free-text question "What should the factory achieve in this codebase, for whom, and why
    now? Add success criteria and constraints if you have them." — options `Show an example answer` (print one, ask
    again) / `Stop`. The answer has no success criteria → one more free-text question "Success criteria: how will we

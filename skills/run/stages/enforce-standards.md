@@ -57,7 +57,9 @@ scaffolding commit on `main` that SOP 4 allows (`chore: enforce standards`). `<p
    - Docs site, if the public docs format is a site generator: its config (e.g. `mkdocs.yml`) and `docs/index.md`.
    - `README.md` sections `## Overview`, `## Getting started`, `## Development` (the three commands), `## CI`,
      `## License`; present = `grep -qxF '## <Section>' README.md` per section.
-   - License: `LICENSE` with the licence the Standards name; none named → Desired `not chosen` (never pick one).
+   - Trait sections (Licence … Runtime operations): rows, present checks and shared-file extensions per the
+     Scaffolding line of the chosen option in `$PLUGIN_ROOT/skills/run/references/standards-traits.md` (its
+     Conventions decide what extends an existing row, what is a Risk, and what is no row at all).
 
    Action (the template's column): `create` (missing), `update` (incomplete: add only what is missing, keep the
    rest), `keep` (complete, or not chosen). Replacing a file (e.g. an old CI config) needs its own `delete` row.
@@ -73,7 +75,7 @@ scaffolding commit on `main` that SOP 4 allows (`chore: enforce standards`). `<p
    For every `create` and `update` row Write the complete resulting file to
    `<repoPath>/.factory/enforce/files/<path>` (an update = the current file plus the additions). Content comes only
    from the Standards:
-   - `Makefile`: `.PHONY: lint test build`; each target runs the tool command of the Standards' `lint:`, `test:` or
+   - `Makefile`: `.PHONY: lint test build` (+ `setup` when the traits ask); each target runs the tool command of the Standards' `lint:`, `test:` or
      `build:` line, never `make <target>`. A target with no tool command fails loudly:
      `@echo "<target>: not configured (see Standards)" >&2; exit 1`, and the plan lists it under Risks.
    - CI: on push and pull request to `main`, set up the Standards' runtimes, then run the configured lint, test and
@@ -83,8 +85,8 @@ scaffolding commit on `main` that SOP 4 allows (`chore: enforce standards`). `<p
    - Helm: minimal chart (`apiVersion: v2`, deployment, service, values for image and port).
    - Docs site: minimal config plus `docs/index.md` with the project name and the Goal's first line.
    - `README.md`: only the missing sections, using the Standards' commands.
-   - `LICENSE`: the named licence's standard text, current year, holder from the Standards, else
-     `git config user.name`.
+   - Trait files: the content rule of the reference's Scaffolding line (e.g. `LICENSE` = the SPDX standard text,
+     current year, holder from the Standards, else `git config user.name`).
 3. **Write `Enforcement Plan`**, export it. Fill: `repo_name`; `standards_approved_at` from the `**Approved:**`
    line of `standards.md`; `approval` = `pending`; `summary` = counts per action; `gap_rows` = one row per inventory
    item `| <item> | <yes, no or partial: detail> | <desired> | <action> |`; `file_list` = one bullet per `create`,

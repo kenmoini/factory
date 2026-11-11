@@ -133,8 +133,9 @@ Same path for every stage, however invoked (no verb, stage verb, `/factory:<stag
    (direct stage verb). Any stop, refusal, or human gate that parks work (SOP 2 `stopped`, a refused prerequisite,
    a `needs-human` or paused task) → end the run; never re-enter the stage you just left.
 
-Use the Skill tool only for the third-party skills `superpowers:brainstorming`, `superpowers:writing-plans` and
-`graphify`, where a stage file says so; never invoke a `factory:*` skill from here.
+Use the Skill tool only for the third-party skills `superpowers:brainstorming` and `superpowers:writing-plans`,
+where a stage file says so; never invoke a `factory:*` skill from here, and never the user-level `graphify` skill:
+the factory drives Graphify through its CLI only (`graphify update|query|explain|path|hook`).
 
 ## status
 
@@ -187,4 +188,4 @@ All under `$PLUGIN_ROOT/skills/run/`:
 - `stages/plan.md`: milestones and tasks with `#dependsOn`; realign and bump `#planRev` when tasks exist.
 - `stages/validate.md`: six `plan-adversary` lenses in one message; Validation/Round N; pass, or back to plan.
 - `stages/execute.md`: the per-task loop of `references/execute-loop.md`, plus Human approve / Human reject.
-- `stages/graph.md`: full build via the `graphify` skill or `graphify update .`; git hooks.
+- `stages/graph.md`: build or refresh with `graphify update .` (CLI only, no LLM extraction); git hooks.

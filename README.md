@@ -10,7 +10,7 @@ Design: `docs/superpowers/specs/2026-11-10-factory-plugin-design.md`.
 - A TriliumNext instance 0.106 or later, with the MCP server enabled under Options -> AI/LLM -> MCP server, and an ETAPI token (Options -> ETAPI -> Create new ETAPI token). You paste the token into the project's `.mcp.json` yourself; the factory never asks for it.
 - git.
 - The `superpowers` plugin from `claude-plugins-official` (`/plugin install superpowers@claude-plugins-official`).
-- bun, uv and graphify: setup installs them on your confirmation.
+- bun, uv and graphify: setup installs them on your confirmation. The factory drives graphify through its CLI only; its `/graphify` skill is never invoked.
 
 ## Install
 
@@ -65,7 +65,7 @@ Stage commands (each also available as `/factory:run <stage>`):
 |---|---|
 | `/factory:setup` | Trilium config and MCP, tools, project note and Factory Log |
 | `/factory:examine` | Greenfield new-project flow or brownfield codebase examination; writes the Goal |
-| `/factory:set-standards` | Research and agree the project standards (lint/test/build/CI) |
+| `/factory:set-standards` | Research and agree the project standards: stack and tooling, then the maturity traits (licence, releases, git hooks, security scanning, supply chain, test policy, repository files, dev environment, architecture decisions, runtime operations), each with popular options to pick from |
 | `/factory:enforce-standards` | Enforcement plan, user approval, scaffold |
 | `/factory:brainstorm` | Brainstorm a workstream: slug and overview, then brainstorming and writing-plans into Trilium |
 | `/factory:uiux` | UI-UX spec and mockups served by the dashboard, if the plan calls for it |
@@ -73,7 +73,7 @@ Stage commands (each also available as `/factory:run <stage>`):
 | `/factory:plan` | Milestones and tasks; realign if they exist |
 | `/factory:validate` | Adversarial reviews of the plan |
 | `/factory:execute` | Spec, build, 4 reviews, approve, merge, task by task |
-| `/factory:graph` | Build or update the Graphify code graph |
+| `/factory:graph` | Build or update the Graphify code graph (`graphify update .`, CLI only, no LLM pass) |
 
 ## How it works
 

@@ -139,7 +139,7 @@ test("labels: every #label used in SKILL.md/stages/refs/templates/agents is defi
     ...["skills/run/SKILL.md"].filter((f) => existsSync(abs(f))),
     ...mdIn("skills/run/stages"),
     ...mdIn("skills/run/templates"),
-    ...["sop", "agent-protocol", "execute-loop"].map((n) => `skills/run/references/${n}.md`).filter((f) => existsSync(abs(f))),
+    ...["sop", "agent-protocol", "execute-loop", "standards-traits"].map((n) => `skills/run/references/${n}.md`).filter((f) => existsSync(abs(f))),
     ...agentFiles(),
   ];
   const used = new Map<string, string[]>();
@@ -214,5 +214,37 @@ test("scaffolding: sop.md owns the working-files commit; setup.md and graph.md c
     const body = read(f);
     for (const w of words) if (!body.includes(w)) problems.push(`${f}: does not mention ${w}`);
   }
+  expect(problems, problems.join("\n")).toEqual([]);
+});
+
+// ---------- rule 11: standards traits ----------
+test("standards: the traits reference drives set-standards and enforce-standards; no free-text other-traits question", () => {
+  const ref = "skills/run/references/standards-traits.md";
+  expect(existsSync(abs(ref)), `${ref}: missing`).toBe(true);
+  const body = read(ref);
+  const problems: string[] = [];
+  for (let i = 1; i <= 16; i++) if (!new RegExp(`### Q${i} `).test(body)) problems.push(`${ref}: no "### Q${i} " heading`);
+  for (const w of ["OpenSSF Scorecard", "Best Practices badge", "SLSA", "Twelve-Factor", "multiSelect", "Applicability"]) if (!body.includes(w)) problems.push(`${ref}: missing ${w}`);
+  const ss = read("skills/run/stages/set-standards.md");
+  if (!ss.includes("$PLUGIN_ROOT/skills/run/references/standards-traits.md")) problems.push("set-standards.md: does not read the traits reference");
+  if (/other traits/i.test(ss)) problems.push("set-standards.md: still mentions other traits");
+  const es = read("skills/run/stages/enforce-standards.md");
+  if (!es.includes("$PLUGIN_ROOT/skills/run/references/standards-traits.md")) problems.push("enforce-standards.md: does not read the traits reference");
+  const tpl = read("skills/run/templates/standards.md");
+  for (const p of ["licence", "releases", "hooks", "security", "supply_chain", "test_policy", "repo_files", "dev_env", "decisions_docs", "operations"]) if (!tpl.includes(`{{${p}}}`)) problems.push(`templates/standards.md: missing {{${p}}}`);
+  if (tpl.includes("{{other}}")) problems.push("templates/standards.md: still has {{other}}");
+  if (!read("skills/run/templates/examination.md").includes("{{traits}}")) problems.push("templates/examination.md: missing {{traits}}");
+  if (!read("agents/codebase-examiner.md").includes("## Traits")) problems.push("codebase-examiner.md: report has no Traits section");
+  expect(problems, problems.join("\n")).toEqual([]);
+});
+
+// ---------- rule 12: graphify is driven through its CLI only ----------
+test("graph: no Skill-tool invocation of graphify; graph stage builds with graphify update", () => {
+  const problems: string[] = [];
+  const graph = read("skills/run/stages/graph.md");
+  if (!graph.includes("graphify update .")) problems.push("graph.md: no graphify update");
+  if (/Skill tool/.test(graph)) problems.push("graph.md: still invokes the Skill tool");
+  if (read("skills/run/stages/setup.md").includes("nudge hooks")) problems.push("setup.md: still runs graphify install for the skill");
+  if (!read("skills/run/SKILL.md").includes("never the user-level `graphify` skill")) problems.push("SKILL.md: does not forbid the graphify skill");
   expect(problems, problems.join("\n")).toEqual([]);
 });

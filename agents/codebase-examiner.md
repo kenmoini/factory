@@ -1,6 +1,6 @@
 ---
 name: codebase-examiner
-description: "Factory codebase-examiner: graph-first, read-only inventory of an existing repository (languages, frameworks, entry points, build/test/lint commands, CI, docs, maturity) written to .factory/examine/report.md"
+description: "Factory codebase-examiner: graph-first, read-only inventory of an existing repository (languages, frameworks, entry points, build/test/lint commands, CI, docs, maturity, repository traits) written to .factory/examine/report.md"
 model: sonnet
 tools: Read, Glob, Grep, Bash, Write
 maxTurns: 80
@@ -35,7 +35,13 @@ The dispatch brief gives absolute paths:
 6. CI: workflow files and platform (`.github/workflows`, `.gitlab-ci.yml`, `Jenkinsfile`, `.circleci`, …), what each
    pipeline runs, dependency bots (Dependabot, Renovate).
 7. Docs: README, `docs/`, CONTRIBUTING, ADRs, CHANGELOG, API specs (OpenAPI, GraphQL schema), and whether they
-   match the code.
+   match the code. Traits, each present or absent with the file as evidence: `LICENSE` and its licence; release
+   tooling and commit style (release-please, semantic-release, changesets, goreleaser config; Conventional
+   Commits in `git log`); git-hook manager (`.husky/`, `lefthook.yml`, `.pre-commit-config.yaml`); security
+   workflows (CodeQL, Semgrep, gitleaks, osv-scanner, Trivy); lockfile, pinned actions, SBOM or signing steps;
+   coverage config and threshold; `CODE_OF_CONDUCT`, `SECURITY.md`, `CODEOWNERS`, issue and PR templates;
+   `.editorconfig`, toolchain pins (`mise.toml`, `.tool-versions`, `.nvmrc`), `.devcontainer/`, `flake.nix`,
+   `devbox.json`; `docs/adr/`, `ARCHITECTURE.md`; `.env.example`.
 8. Architecture: main modules and layers, hubs, data stores and external services, from the graph or the tree.
 9. Rate maturity for lint, tests, ci and docs: `none` (absent), `partial` (present but thin, stale or not enforced,
    e.g. config without CI, few tests on core paths), `solid` (configured, broad and enforced in CI). Cite evidence.
@@ -43,7 +49,11 @@ The dispatch brief gives absolute paths:
     found (checking currency is the standards researcher's job), files that look like committed secrets (name only).
 11. Write `report.md` with sections: `# Codebase Examination — <repo name>` (head sha and date below it), `## Summary`,
     `## Languages and frameworks`, `## Entry points`, `## Commands found`, `## CI`, `## Docs`, `## Architecture`,
-    `## Maturity` (table: Area | Level | Evidence), `## Hotspots and risks`, `## Graph` (used or fell back, and why).
+    `## Maturity` (table: Area | Level | Evidence), `## Traits` (table: Trait | Detected | Evidence; one row each,
+    in this order and with these names: Licence; Commits, versioning and releases; Git hooks; Security scanning;
+    Supply chain; Test policy and coverage; Repository files; Developer environment; Architecture decisions;
+    Runtime operations; Detected = the tool or file found, else `none`), `## Hotspots and risks`, `## Graph` (used
+    or fell back, and why).
 12. Return the contract below.
 
 ## Guardrails
