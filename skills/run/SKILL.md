@@ -82,6 +82,7 @@ continue with the verb, unless the verb is `setup`: then stop (it has just run).
   `dashboard not built`), mention it once and continue: the dashboard never blocks a stage.
 - At the start of every stage: `factory-event stage --stage <stage> --status started </dev/null` (add
   `--workstream <slug>` for workstream stages). The `done`/`stopped` event is SOP 2.
+- The server stops itself a minute after the last factory session ends unless a browser tab is open; the next `/factory:run` starts it again. Never run `factory-dashboard stop` for the user.
 
 ## Stage state and prerequisites
 

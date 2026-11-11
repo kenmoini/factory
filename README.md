@@ -40,7 +40,7 @@ From a marketplace (placeholders are literal; fill in your own):
    { "mcpServers": { "trilium": { "type": "http", "url": "<triliumBaseUrl>/mcp", "headers": { "Authorization": "Bearer your-etapi-token" } } } }
    ```
 
-   For an `https://` Trilium it also offers to write `NODE_TLS_REJECT_UNAUTHORIZED=0` into `<repo>/.claude/settings.local.json` (`env`), so Claude Code's own MCP client accepts a self-signed certificate. Then it stops.
+   For an `https://` Trilium it also offers to write `NODE_TLS_REJECT_UNAUTHORIZED=0` into `<repo>/.claude/settings.local.json` (`env`), so Claude Code's own MCP client accepts a self-signed certificate. Both files are written by `factory-settings` (atomic temp-file-and-rename, idempotent; an existing `trilium` server entry is never overwritten). Then it stops.
 3. Open `<repo>/.mcp.json`, replace `your-etapi-token` with your ETAPI token (Options -> ETAPI in Trilium), run `/mcp` and reconnect (or restart Claude Code; approve the project server `trilium` if asked), then run `/factory:run` again. The token never passes through Claude.
 4. Setup then checks Trilium (version, MCP endpoint), installs tools, prepares git and the working files and creates the Trilium project notes. Each change is confirmed first.
 
@@ -111,6 +111,8 @@ A local web app (Bun, under `dashboard/`) shows each factory repo's workstream: 
 
 - `factory-dashboard start [--port N] [--open]` starts it in the background (default port 7777, or `dashboardPort` in the global config) and registers the repo it is run from. On first run it installs the dashboard's dependencies (`bun install --frozen-lockfile` in `dashboard/`, output in `dashboard.log`).
 - `factory-dashboard status | open | stop | restart`. The pidfile and `dashboard.log` live in the global config directory.
+- The server stops itself a minute after the last factory session ends (the plugin's `SessionEnd` hook tells it) unless a browser tab is open; a session whose Claude process is gone is noticed within a sweep, and a session that stops sending events for two hours counts as gone. `FACTORY_GRACE_MS` (60000) and `FACTORY_SESSION_IDLE_MS` (7200000) set the periods; `FACTORY_AUTO_EXIT=0` before `factory-dashboard start` keeps it running until `stop`.
+- `start` and `status` reconcile the pidfile with whatever answers `/api/health` on the port: a factory server the pidfile does not name is adopted, a stale pidfile is repaired, and another program on the port is reported (`foreign: true`), never replaced.
 - Repo tab: branches, worktrees and commits as a rail graph; click a commit for its message, changed files and the task it belongs to.
 - Trilium URL and ETAPI token are per repo, read from the Trilium MCP server Claude Code uses: `mcpServers.trilium` in `<repo>/.mcp.json` (`url` `<trilium>/mcp`, `headers.Authorization` `Bearer <token>`), else in `~/.claude.json` (user scope). `${VAR}` references in it are expanded from the dashboard's environment, as Claude Code does; `FACTORY_TRILIUM_URL` / `FACTORY_ETAPI_TOKEN` override both. Changes are picked up without a restart. A placeholder token (`your-etapi-token`, or empty) keeps the repo listed but not polled: its board answers `trilium token not configured` until the real token is in place. `/api/repos` shows each repo's Trilium URL and where it came from, never the token.
 - TLS certificates are not verified (a self-signed Trilium works); set `FACTORY_TLS_VERIFY=1` before `factory-dashboard start` to verify them.

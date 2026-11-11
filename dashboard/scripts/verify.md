@@ -30,6 +30,18 @@ TLS certificates are not verified unless `FACTORY_TLS_VERIFY=1`, so a self-signe
 7. `bin/factory-dashboard stop` -> `{"running":false,"stopped":<pid>}`; pidfile gone.
 8. `bin/factory-dashboard status` -> `running: false`.
 
+## Lifecycle
+
+1. `FACTORY_GRACE_MS=5000 bin/factory-dashboard start` from a plain shell (no Claude session) -> running.
+2. `echo '{"session_id":"v1","source":"startup"}' | CLAUDE_PROJECT_DIR="$repo" dashboard/scripts/send-event.sh session-start`,
+   then `curl -s 127.0.0.1:<port>/api/health` -> `"sessions": 1, "streams": 0, "autoExit": true`.
+3. `echo '{"session_id":"v1","reason":"other"}' | CLAUDE_PROJECT_DIR="$repo" dashboard/scripts/send-event.sh session-end`;
+   within 30 s `bin/factory-dashboard status` -> `running: false`, the pidfile is gone and `dashboard.log` ends with
+   `factory-dashboard: exiting (no factory session or browser for 5s)`.
+4. Repeat 1-3 with the board open in a browser: `streams` is 1 and the server stays; close the tab and it stops.
+5. `bin/factory-dashboard start`, delete `~/.config/claude-factory/dashboard.pid`, `bin/factory-dashboard start`
+   again -> same pid with `"adopted": true`; `status` -> running; `stop`.
+
 ## Repo tab
 
 With the server running (steps 1-4) against a factory repo that has a worktree branch with an uncommitted file:
