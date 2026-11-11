@@ -1,6 +1,6 @@
 import type { Action } from "./store";
 
-const EVENTS = ["snapshot", "agent", "step", "heartbeat"] as const;
+const EVENTS = ["snapshot", "agent", "step", "heartbeat", "repo"] as const;
 const BACKOFF_MS = [1000, 2000, 4000, 8000, 10000];
 
 /**

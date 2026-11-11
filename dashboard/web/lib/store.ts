@@ -1,5 +1,8 @@
 import { useSyncExternalStore } from "react";
-import type { LiveAgent, Step, StreamEvent, WorkstreamSnapshot } from "../../src/shared/types";
+import type { LiveAgent, RepoSnapshot, Step, StreamEvent, WorkstreamSnapshot } from "../../src/shared/types";
+
+export interface RepoView { branch?: string; limit: number }
+export const DEFAULT_REPO_VIEW: RepoView = { limit: 100 };
 
 export interface State {
   repo?: string;
@@ -10,6 +13,12 @@ export interface State {
   connected: boolean;
   selectedTask?: string;
   tab: string;
+  /** The git snapshot for the Repo tab (`snapshot` is the workstream snapshot). */
+  repoSnapshot: RepoSnapshot | null;
+  selectedCommit?: string;
+  repoView: RepoView;
+  /** A task to select once its workstream's snapshot arrives (set by `open-task` across workstreams). */
+  pendingTask?: { ws: string; taskId: string };
 }
 
 export type Action =
@@ -18,7 +27,10 @@ export type Action =
   | { type: "select-task"; data?: string }
   | { type: "tab"; data: string }
   | { type: "select-repo"; data: { repo: string; ws?: string } }
-  | { type: "select-ws"; data: string };
+  | { type: "select-ws"; data: string }
+  | { type: "select-commit"; data?: string }
+  | { type: "repo-view"; data: RepoView }
+  | { type: "open-task"; data: { ws: string; taskId: string } };
 
 /** Steps kept per agent in the browser; older ones are dropped (the server keeps the full history). */
 export const STEP_CAP = 500;
@@ -42,13 +54,19 @@ function pruneSteps(steps: Record<string, Step[]>, live: Record<string, LiveAgen
   return out;
 }
 
-export const initialState: State = { snapshot: null, live: {}, steps: {}, connected: false, tab: "board" };
+export const initialState: State = { snapshot: null, live: {}, steps: {}, connected: false, tab: "board", repoSnapshot: null, repoView: DEFAULT_REPO_VIEW };
 
 /** Pure reducer: no DOM, no I/O. Returns the same object when nothing changes. */
 export function reduce(state: State, e: Action): State {
   switch (e.type) {
-    case "snapshot":
-      return { ...state, snapshot: e.data };
+    case "snapshot": {
+      const p = state.pendingTask;
+      if (!p || e.data.workstream?.slug !== p.ws) return { ...state, snapshot: e.data };
+      const task = e.data.tasks.find((t) => t.taskId === p.taskId);
+      return { ...state, snapshot: e.data, selectedTask: task?.id, pendingTask: undefined };
+    }
+    case "repo":
+      return { ...state, repoSnapshot: e.data };
     case "agent": {
       const { op, agent } = e.data;
       if (op === "stop") {
@@ -73,12 +91,22 @@ export function reduce(state: State, e: Action): State {
       return e.data ? { ...state, connected: true, live: {} } : { ...state, connected: false };
     case "select-task":
       return { ...state, selectedTask: e.data === undefined || e.data === state.selectedTask ? undefined : e.data };
+    case "select-commit":
+      return { ...state, selectedCommit: e.data === undefined || e.data === state.selectedCommit ? undefined : e.data };
+    case "repo-view":
+      return e.data.branch === state.repoView.branch && e.data.limit === state.repoView.limit ? state : { ...state, repoView: e.data };
+    case "open-task": {
+      const { ws, taskId } = e.data;
+      const task = state.snapshot?.workstream?.slug === ws ? state.snapshot.tasks.find((t) => t.taskId === taskId) : undefined;
+      if (task) return { ...state, tab: "board", selectedTask: task.id, pendingTask: undefined };
+      return { ...state, tab: "board", ws, selectedTask: undefined, pendingTask: { ws, taskId } };
+    }
     case "tab":
       return state.tab === e.data ? state : { ...state, tab: e.data };
     case "select-repo":
       return { ...initialState, repo: e.data.repo, ws: e.data.ws, tab: state.tab };
     case "select-ws":
-      return { ...state, ws: e.data, selectedTask: undefined };
+      return { ...state, ws: e.data, selectedTask: undefined, pendingTask: undefined, selectedCommit: undefined };
     default:
       return state;
   }
