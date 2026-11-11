@@ -1,60 +1,18 @@
 import { useEffect, useId, useRef, useState, type JSX } from "react";
-import { COLUMN_TITLES, columnFor } from "../../src/shared/columns";
-import type { CommitDetail, RepoBranch, RepoSnapshot, RepoWorktree, Task, TaskRef, WorkstreamSnapshot } from "../../src/shared/types";
+import type { CommitDetail, RepoBranch, RepoSnapshot, RepoWorktree, TaskRef, WorkstreamSnapshot } from "../../src/shared/types";
 import { formatAgo, useNow } from "../lib/clock";
+import { useDetail } from "../lib/detail";
 import type { RailLayout } from "../lib/rail";
 import { dispatch, useStore } from "../lib/store";
+import { statusLine } from "../lib/task-status";
+import { CommitChips } from "./Chips";
 import { stripId } from "./Kanban";
 import { laneColour } from "./Rail";
-import { CommitChips } from "./Repo";
 
 /** How long `Copy sha` reads `Copied` (or `Copy failed`) before it reverts. */
 const COPY_FLASH_MS = 1500;
 
-type Load =
-  | { status: "idle" }
-  | { status: "loading"; id: string }
-  | { status: "ready"; id: string; detail: CommitDetail }
-  | { status: "error"; id: string; code?: number };
-
-/**
- * `GET /api/repo/commits/:sha` while the drawer shows a commit of the log; refetched when the repo snapshot's
- * fingerprint changes (tips, worktrees, dirty counts) and on `attempt`.
- */
-function useCommitDetail(sha: string | undefined, repoPath: string, fingerprint: string, attempt: number): Load {
-  const [load, setLoad] = useState<Load>({ status: "idle" });
-  useEffect(() => {
-    if (!sha) return;
-    const ctrl = new AbortController();
-    // a refetch of the commit already on screen keeps it there instead of flashing "loading"
-    setLoad((prev) => (prev.status === "ready" && prev.id === sha ? prev : { status: "loading", id: sha }));
-    (async () => {
-      let code: number | undefined;
-      try {
-        const query = new URLSearchParams({ repo: repoPath });
-        const res = await fetch(`/api/repo/commits/${encodeURIComponent(sha)}?${query}`, { cache: "no-store", signal: ctrl.signal });
-        code = res.status;
-        if (!res.ok) throw new Error(`status ${code}`);
-        const detail = (await res.json()) as CommitDetail;
-        if (!ctrl.signal.aborted) setLoad({ status: "ready", id: sha, detail });
-      } catch {
-        if (ctrl.signal.aborted) return;
-        setLoad((prev) => (prev.status === "ready" && prev.id === sha ? prev : { status: "error", id: sha, code }));
-      }
-    })();
-    return () => ctrl.abort();
-  }, [sha, repoPath, fingerprint, attempt]);
-  return load;
-}
-
-/** The task drawer's status line (TaskDrawer.tsx keeps its own copy). */
-function statusLine(t: Task): string {
-  const col = COLUMN_TITLES[columnFor(t)];
-  if (t.status === "reviewing") return `${col}, round ${t.round}`;
-  if (t.status === "fixing") return `${col}, fixing round ${t.round} findings`;
-  if (t.status === "merging") return `${col}, merging`;
-  return col;
-}
+const commitUrl = (sha: string, repoPath: string) => `/api/repo/commits/${encodeURIComponent(sha)}?${new URLSearchParams({ repo: repoPath })}`;
 
 /** A worktree path relative to the repo root when it lies inside it (`.factory/worktrees/<slug>`), else as given. */
 const relPath = (path: string, root: string) => (path.startsWith(root + "/") ? path.slice(root.length + 1) : path);
@@ -79,7 +37,7 @@ function Worktrees({ trees, root, defaultBranch }: { trees: { branch: RepoBranch
         <dl key={branch.name} className="kv">
           {many && <><dt>branch</dt><dd>{branch.name}</dd></>}
           <dt>path</dt>
-          <dd><code>{relPath(worktree.path, root)}</code></dd>
+          <dd>{worktree.path === root ? "repository root" : <code>{relPath(worktree.path, root)}</code>}</dd>
           {!branch.isDefault && <><dt>vs {defaultBranch}</dt><dd>{branch.ahead} ahead · {branch.behind} behind</dd></>}
           {worktree.dirty > 0 && <><dt>working tree</dt><dd>{plural(worktree.dirty, "file", "files")} changed, not committed</dd></>}
         </dl>
@@ -168,9 +126,11 @@ export function CommitDrawer({ repoPath, shown, snapshot, layout, branches, live
   const commit = sha ? shown.commits.find((c) => c.sha === sha) : undefined;
 
   const [attempt, setAttempt] = useState(0);
-  // a commit outside the log on screen is not fetched
-  const load = useCommitDetail(selected && commit ? selected : undefined, repoPath, shown.fingerprint, attempt);
-  const detail = load.status === "ready" && load.id === sha ? load.detail : undefined;
+  // `GET /api/repo/commits/:sha` for a commit of the log on screen (one outside it is not fetched), refetched when the
+  // repo snapshot's fingerprint changes (tips, worktrees, dirty counts)
+  const load = useDetail<CommitDetail>(selected && commit ? commitUrl(selected, repoPath) : undefined, shown.fingerprint, attempt);
+  const url = sha ? commitUrl(sha, repoPath) : undefined;
+  const detail = load.status === "ready" && load.url === url ? load.detail : undefined;
 
   const asideRef = useRef<HTMLElement>(null);
   const changesRef = useRef<HTMLElement>(null);
@@ -241,7 +201,7 @@ export function CommitDrawer({ repoPath, shown, snapshot, layout, branches, live
             <section className="section">
               <h3>Message</h3>
               {detail ? (detail.body ? <pre className="commit-body">{detail.body}</pre> : <p className="drawer-state">No further message.</p>)
-                : load.status === "error" && load.id === sha ? (
+                : load.status === "error" && load.url === url ? (
                   <div className="empty drawer-error" role="alert">
                     <p>{load.code === 404 ? "This commit is no longer in the repository." : "The commit details could not be loaded."}</p>
                     <button className="doc-retry" type="button" onClick={() => setAttempt((n) => n + 1)}>Try again</button>

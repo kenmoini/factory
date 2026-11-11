@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { runInWorkstream } from "../../src/shared/agents";
-import { COLUMN_TITLES, columnFor } from "../../src/shared/columns";
 import type { AgentRun, LiveAgent, Review, Reviewer, Task, TaskDetail, WorkstreamSnapshot } from "../../src/shared/types";
 import { formatElapsed, useNow } from "../lib/clock";
+import { useDetail, type Load } from "../lib/detail";
 import { toSafeHtml } from "../lib/render";
 import { dispatch, useStore } from "../lib/store";
+import { statusLine } from "../lib/task-status";
 import { agentName, stripId } from "./Kanban";
 import { Steps, useAgentSteps } from "./Steps";
 
@@ -12,37 +13,11 @@ const REVIEWER_ORDER: Reviewer[] = ["security", "ux", "ui-design", "code"];
 const VERDICT_CLASS = { PASS: "v-pass", CHANGES: "v-changes", PENDING: "v-pending" } as const;
 const VERDICT_TEXT = { PASS: "Pass", CHANGES: "Changes requested", PENDING: "Pending" } as const;
 
-type Load =
-  | { status: "idle" }
-  | { status: "loading"; id: string }
-  | { status: "ready"; id: string; detail: TaskDetail }
-  | { status: "error"; id: string; code?: number };
+const taskUrl = (id: string) => `/api/tasks/${encodeURIComponent(id)}`;
 
 /** `GET /api/tasks/:id` while the drawer is open; refetched when the task's note, status or round changes. */
-function useTaskDetail(id: string | undefined, task: Task | undefined, attempt: number): Load {
-  const [load, setLoad] = useState<Load>({ status: "idle" });
-  const version = task ? `${task.modified}|${task.status}|${task.round}` : "";
-  useEffect(() => {
-    if (!id) return;
-    const ctrl = new AbortController();
-    // a refetch of the task already on screen keeps it there instead of flashing "loading"
-    setLoad((prev) => (prev.status === "ready" && prev.id === id ? prev : { status: "loading", id }));
-    (async () => {
-      let code: number | undefined;
-      try {
-        const res = await fetch(`/api/tasks/${encodeURIComponent(id)}`, { cache: "no-store", signal: ctrl.signal });
-        code = res.status;
-        if (!res.ok) throw new Error(`status ${code}`);
-        const detail = (await res.json()) as TaskDetail;
-        if (!ctrl.signal.aborted) setLoad({ status: "ready", id, detail });
-      } catch {
-        if (ctrl.signal.aborted) return;
-        setLoad((prev) => (prev.status === "ready" && prev.id === id ? prev : { status: "error", id, code }));
-      }
-    })();
-    return () => ctrl.abort();
-  }, [id, version, attempt]);
-  return load;
+function useTaskDetail(id: string | undefined, task: Task | undefined, attempt: number): Load<TaskDetail> {
+  return useDetail<TaskDetail>(id ? taskUrl(id) : undefined, task ? `${task.modified}|${task.status}|${task.round}` : "", attempt);
 }
 
 type NoteLoad = { status: "loading" } | { status: "ready"; html: string } | { status: "error" };
@@ -72,14 +47,6 @@ function useNoteHtml(id: string | undefined): NoteLoad | undefined {
     return () => ctrl.abort();
   }, [id]);
   return id ? load : undefined;
-}
-
-function statusLine(t: Task): string {
-  const col = COLUMN_TITLES[columnFor(t)];
-  if (t.status === "reviewing") return `${col}, round ${t.round}`;
-  if (t.status === "fixing") return `${col}, fixing round ${t.round} findings`;
-  if (t.status === "merging") return `${col}, merging`;
-  return col;
 }
 
 function ReviewItem({ review }: { review: Review }) {
@@ -204,7 +171,7 @@ export function TaskDrawer({ snapshot }: { snapshot: WorkstreamSnapshot | null }
   const [attempt, setAttempt] = useState(0);
   const snapTask = snapshot?.tasks.find((t) => t.id === id);
   const load = useTaskDetail(selected, snapTask, attempt);
-  const detail = load.status === "ready" && load.id === id ? load.detail : undefined;
+  const detail = load.status === "ready" && !!id && load.url === taskUrl(id) ? load.detail : undefined;
   const task = snapTask ?? detail?.task;
 
   // reviews and runs come from the snapshot when it has the task, so they stay live between fetches

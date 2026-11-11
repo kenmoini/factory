@@ -3,6 +3,7 @@ import type { LiveAgent, RepoBranch, RepoCommit, RepoSnapshot, WorkstreamSnapsho
 import { formatAgo, useNow } from "../lib/clock";
 import { layoutRail, type RailLayout } from "../lib/rail";
 import { DEFAULT_REPO_VIEW, dispatch, useStore, type RepoView } from "../lib/store";
+import { CommitChips } from "./Chips";
 import { CommitDrawer } from "./CommitDrawer";
 import { laneColour, Rail } from "./Rail";
 
@@ -99,36 +100,6 @@ function Toolbar({ view, branches, layout, truncated }: { view: RepoView; branch
         </ul>
       )}
     </div>
-  );
-}
-
-function BranchChip({ name, colour, branch }: { name: string; colour: string; branch?: RepoBranch }) {
-  const dirty = branch?.worktree?.dirty ?? 0;
-  return (
-    <span className={`chip chip-branch${branch?.worktree ? " chip-wt" : ""}`} style={{ "--chip": colour } as CSSProperties}>
-      {name}
-      {dirty > 0 && <span aria-hidden="true">·{dirty}</span>}
-    </span>
-  );
-}
-
-export interface CommitChipsProps { commit: RepoCommit; colour: string; branches: Map<string, RepoBranch>; live: Set<string>; workstream?: string }
-
-/**
- * A commit's chips, shared by its row and the commit drawer: tip branches in the commit's rail colour (worktree mark,
- * dirty count), tags, task ids (`T-003` for the on-screen workstream, else `slug/T-003`), and the lamp pulse while an
- * agent works on one of its branches.
- */
-export function CommitChips({ commit, colour, branches, live, workstream }: CommitChipsProps) {
-  return (
-    <>
-      {commit.branches.map((name) => <BranchChip key={name} name={name} colour={colour} branch={branches.get(name)} />)}
-      {commit.tags.map((t) => <span key={t} className="chip chip-tag"><span className="sr">tag </span>{t}</span>)}
-      {commit.tasks.map((t) => (
-        <span key={`${t.slug}/${t.taskId}`} className="chip chip-task">{t.slug === workstream ? t.taskId : `${t.slug}/${t.taskId}`}</span>
-      ))}
-      {commit.branches.some((b) => live.has(b)) && <span className="pulse" aria-hidden="true" />}
-    </>
   );
 }
 
