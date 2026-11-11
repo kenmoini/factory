@@ -256,3 +256,12 @@ test("builder: commit messages end with the Task: <slug>/<taskId> trailer", () =
   if (!read("skills/run/references/agent-protocol.md").includes("Task: <slug>/<taskId>")) problems.push("agent-protocol.md: git guardrail lacks the trailer");
   expect(problems, problems.join("\n")).toEqual([]);
 });
+
+// ---------- rule 14: Claude settings are edited through factory-settings ----------
+test("settings: setup.md edits Claude settings through factory-settings, never inline bun scripts", () => {
+  const s = read("skills/run/stages/setup.md");
+  const problems: string[] = [];
+  if (s.includes("bun -e")) problems.push("setup.md: still runs an inline bun -e script");
+  for (const w of ["factory-settings env", "factory-settings mcp"]) if (!s.includes(w)) problems.push(`setup.md: does not use ${w}`);
+  expect(problems, problems.join("\n")).toEqual([]);
+});

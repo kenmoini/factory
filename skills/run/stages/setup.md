@@ -60,8 +60,8 @@ nothing is read from Trilium before step 9.
      gitignored (`<ignore>` commit)." options `http://localhost:8080` / `http://localhost:37840` (desktop) /
      `Stop setup`; others via Other.
    - Fix: Tracked rule; then (prints `written`, `invalid` or `exists`; `<url>` single-quoted)
-     `bun -e 'const fs=require("fs"),[,p,u]=process.argv,o=v=>v&&typeof v=="object"&&!Array.isArray(v);let j={};try{if(fs.existsSync(p))j=JSON.parse(fs.readFileSync(p,"utf8"))}catch{j=0}const s=o(j)&&(j.mcpServers??={});if(!o(s)){console.log("invalid");process.exit(1)}if(s.trilium){console.log("exists");process.exit(1)}s.trilium={type:"http",url:u.trim().replace(/\/+$/,"").replace(/\/(etapi|mcp)$/,"")+"/mcp",headers:{Authorization:"Bearer your-etapi-token"}};fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n",{mode:0o600});fs.chmodSync(p,0o600);console.log("written")' "<repoPath>/.mcp.json" '<url>'`.
-     `invalid` (not JSON) or `exists` (a `trilium` server without `"type": "http"` and a `url`) → the user must fix
+     `factory-settings mcp "<repoPath>/.mcp.json" trilium '<url>'`.
+     `invalid` (not JSON) or `exists` (a `trilium` server is already there; the factory never overwrites it) → the user must fix
      `.mcp.json`; Stop setup.
      Then step 4's TLS bullet now (one restart covers both); then `<ignore>`; then `<edit>`; Stop setup.
    - `placeholder=true` → `<ignore>` (say if it adds a line); `<edit>`; Stop setup.
@@ -79,8 +79,8 @@ nothing is read from Trilium before step 9.
      unlike the plugin, Claude Code's MCP client checks certificates (a self-signed or private-CA one keeps `trilium`
      from connecting); the setting turns that off for Claude Code and all it starts in this project; AskUserQuestion `Write NODE_TLS_REJECT_UNAUTHORIZED=0 into
      <repoPath>/.claude/settings.local.json env (recommended for self-signed certs) / Skip` (gitignored, `<ignore>`
-     commit). Fix (keeps other keys; prints `written` or `invalid`; then `<ignore>`):
-     `bun -e 'const fs=require("fs"),[,p]=process.argv,o=v=>v&&typeof v=="object"&&!Array.isArray(v);let j={};try{if(fs.existsSync(p))j=JSON.parse(fs.readFileSync(p,"utf8"))}catch{j=0}if(!o(j)){console.log("invalid");process.exit(1)}j.env={...(o(j.env)?j.env:{}),NODE_TLS_REJECT_UNAUTHORIZED:"0"};fs.mkdirSync(require("path").dirname(p),{recursive:true});fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n");console.log("written")' "<repoPath>/.claude/settings.local.json"`
+     commit). Fix (keeps other keys; prints `written`, `unchanged` or `invalid`; then `<ignore>`):
+     `factory-settings env "<repoPath>/.claude/settings.local.json" NODE_TLS_REJECT_UNAUTHORIZED=0`
      (`invalid` → show it, continue without). It takes effect after Claude Code restarts: remember "TLS env written".
 5. **Tools** (`tools.uv`, `graphify.installed`, `tools.superpowers`).
    - Missing items, in install order: uv (`tools.uv=false`): `curl -LsSf https://astral.sh/uv/install.sh | sh` (to

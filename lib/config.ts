@@ -1,5 +1,6 @@
-import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { appendFileSync, chmodSync, existsSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { writeFileAtomic } from "./atomic";
 import { PLACEHOLDER_TOKEN, triliumBaseUrl } from "./trilium-config";
 
 /** The global config holds no Trilium credentials (they live in the project `.mcp.json`). */
@@ -27,8 +28,7 @@ function readJson<T>(path: string): T | null {
 }
 
 function writeJson(path: string, value: unknown): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(value, null, 2) + "\n", { mode: 0o600 });
+  writeFileAtomic(path, JSON.stringify(value, null, 2) + "\n", { mode: 0o600 });
   chmodSync(path, 0o600);
 }
 

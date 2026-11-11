@@ -67,7 +67,7 @@ describe("bin/", () => {
   const files = readdirSync(binDir);
 
   test("contains all expected scripts", () => {
-    for (const f of ["factory-config", "factory-event", "factory-preflight", "factory-worktree", "factory-review-package", "factory-merge", "factory-dashboard"]) {
+    for (const f of ["factory-config", "factory-event", "factory-preflight", "factory-worktree", "factory-review-package", "factory-merge", "factory-dashboard", "factory-settings"]) {
       expect(files).toContain(f);
     }
   });
