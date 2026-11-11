@@ -34,3 +34,18 @@ export function formatElapsed(ms: number): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 }
+
+/** Relative age of an ISO timestamp: `now`, `12m`, `3h`, `2d`, then the UTC date `YYYY-MM-DD`; `""` when unparsable. */
+export function formatAgo(iso: string, now: number): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const seconds = Math.max(0, Math.floor((now - t) / 1000));
+  if (seconds < 60) return "now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  return new Date(t).toISOString().slice(0, 10);
+}
