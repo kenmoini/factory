@@ -200,3 +200,19 @@ test("execute: stages/execute.md mentions every execute-loop phase and factory-*
   const problems = [...EXECUTE_PHASES, ...FACTORY_BINS].filter((w) => !has(w)).map((w) => `${f}: does not mention ${w}`);
   expect(problems, problems.join("\n")).toEqual([]);
 });
+
+// ---------- rule 10: the working-files commit covers .gitattributes ----------
+test("scaffolding: sop.md owns the working-files commit; setup.md and graph.md commit .gitattributes through it", () => {
+  const want: [string, string[]][] = [
+    ["skills/run/references/sop.md", ["Working-files commit", "merge=graphify", "status --porcelain -- <file>", "ignore factory working files", "register graphify merge driver"]],
+    ["skills/run/stages/setup.md", ["working-files commit", ".gitattributes", "graphify hook install", "merge=graphify"]],
+    ["skills/run/stages/graph.md", ["working-files commit", ".gitattributes", "merge=graphify"]],
+    ["skills/run/references/execute-loop.md", ["working-files commit", ".gitattributes"]],
+  ];
+  const problems: string[] = [];
+  for (const [f, words] of want) {
+    const body = read(f);
+    for (const w of words) if (!body.includes(w)) problems.push(`${f}: does not mention ${w}`);
+  }
+  expect(problems, problems.join("\n")).toEqual([]);
+});

@@ -37,7 +37,8 @@ The `execute` stage's state machine, one task at a time. Labels, titles and plac
    `factory-worktree ensure <slug> --repo <repoPath>` → `{path, …}`. Exit 2 (branch exists,
    not created by the factory) → AskUserQuestion `Adopt branch <slug> / Stop`; adopt = rerun with `--adopt`. Exit 3
    (invalid slug) or 1 → report the `error` and stop. If `path` differs from `#worktree`: `set_attribute(<ws>, worktree=<path>)`.
-3. `git -C <repoPath> rev-parse --abbrev-ref HEAD` is `<main>` and `git -C <repoPath> status --porcelain` is empty; else
+3. `git -C <repoPath> rev-parse --abbrev-ref HEAD` is `<main>` and `git -C <repoPath> status --porcelain` is empty.
+   Entries only for `.gitignore`/`.gitattributes` → run SOP 4's working-files commit and re-check; anything else →
    stop and tell the user (never stash or reset for them).
 4. `get_attributes(<Standards>)` → `#lintCmd`, `#testCmd`, `#buildCmd` (empty = none), `#postMergeSmoke` (absent = `false`).
 5. Refresh `<repoPath>/.factory/docs/{goal,standards}.md` from Trilium, then copy them into `<docs>/`; re-export `spec`,

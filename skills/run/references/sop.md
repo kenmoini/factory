@@ -35,13 +35,27 @@ agent dispatch rules in `$PLUGIN_ROOT/skills/run/references/agent-protocol.md`.
 ### 4. Commits and branches
 
 - `<main>` is the default branch (`main`, else `master`; schema Placeholders). Your only commits on `<main>` are the
-  two scaffolding commits: `chore: ignore factory working files` (setup's `.gitignore`: `.factory/`,
-  `graphify-out/`, `.mcp.json`, `.claude/settings.local.json`) and `chore: enforce standards` (after
-  `#approval=approved`).
+  scaffolding commits: the working-files commit below (setup; the graph stage repeats it when `graphify hook
+  install` runs there) and `chore: enforce standards` (after `#approval=approved`).
+- **Working-files commit.** Setup's `.gitignore` lines (`.factory/`, `graphify-out/`, `.mcp.json`,
+  `.claude/settings.local.json`) and the `.gitattributes` line that `graphify hook install` writes
+  (`graphify-out/graph.json merge=graphify`) are committed on `<main>`, so the tree stays clean for `factory-merge`
+  (an untracked `.gitattributes` makes it report `dirty`). Run it when the repo has a commit (or as the first
+  commit on the unborn default branch) and `git -C "<repoPath>" branch --show-current` is `<main>`. A file
+  qualifies when `git -C "<repoPath>" status --porcelain -- <file>` is non-empty and only its managed lines differ
+  from HEAD (exit 0):
+  `.gitignore`: `m='^(\.factory/|graphify-out/|\.mcp\.json|\.claude/settings\.local\.json)$'; diff <(git -C "<repoPath>" show HEAD:.gitignore 2>/dev/null | grep -vE "$m") <(grep -vE "$m" "<repoPath>/.gitignore") >/dev/null`
+  `.gitattributes`: `a='merge=graphify'; diff <(git -C "<repoPath>" show HEAD:.gitattributes 2>/dev/null | grep -vF "$a") <(grep -vF "$a" "<repoPath>/.gitattributes") >/dev/null`
+  None qualifies → no commit (a file carrying other uncommitted lines is left alone; say so). Else
+  `git -C "<repoPath>" add -- <files> && git -C "<repoPath>" commit -m "<msg>" -- <files>` with the qualifying
+  files; `<msg>` = `chore: ` + `ignore factory working files` and/or `register graphify merge driver` (both, joined
+  by `, `, when both qualify). If `git -C "<repoPath>" diff --cached --name-only` also lists `.mcp.json` (setup's
+  Tracked rule removed it from the index), drop the `-- <files>` pathspec so that removal is committed too (a
+  pathspec re-adds the file).
 - Builders commit only on branch `<slug>` inside `<repoPath>/.factory/worktrees/<slug>`; the api-design stage commits
   its repo API docs there too (`docs(api): <slug>`). Nobody else commits on `<main>`.
 - `<main>` changes only through `factory-merge <repoPath> <slug> --message-file <file>` (`git merge --no-ff`), except
-  those two scaffolding commits; never push, never open a PR.
+  the scaffolding commits; never push, never open a PR.
 - Never rebase, reset or force anything on `<main>`; refuse and report if `<main>` is dirty.
 
 ### 5. Graph first

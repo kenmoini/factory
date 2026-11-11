@@ -87,7 +87,7 @@ Stage commands (each also available as `/factory:run <stage>`):
 
 ## Working files
 
-Created in the target repo by setup and gitignored (`.factory/`, `graphify-out/`, `.mcp.json` and `.claude/settings.local.json` are added to `.gitignore` and committed on the default branch as `chore: ignore factory working files`):
+Created in the target repo by setup and gitignored (`.factory/`, `graphify-out/`, `.mcp.json` and `.claude/settings.local.json` are added to `.gitignore`; that file and the `.gitattributes` merge-driver line written by `graphify hook install` are committed on the default branch as `chore: ignore factory working files, register graphify merge driver`, so the tree is clean for the first merge):
 
 ```
 .factory/

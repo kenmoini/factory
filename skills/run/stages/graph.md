@@ -36,6 +36,10 @@ Run every `graphify` command from `<repoPath>` (`cd "<repoPath>" && graphify …
      user's consent; SOP 5 re-installs when missing); re-check as above.
    - Still absent (e.g. husky owns `core.hooksPath`) → warn once that the graph refreshes only through SOP 5's stale
      check, record hooks `bypassed`, and continue: hooks never stop this stage.
+   - `hook install` also writes `graphify-out/graph.json merge=graphify` into `<repoPath>/.gitattributes`; left
+     uncommitted it makes `factory-merge` report `dirty`. After an install, or whenever
+     `git -C "<repoPath>" status --porcelain -- .gitattributes` is non-empty, run SOP 4's working-files commit (it
+     checks the branch and skips a file with other uncommitted lines; then tell the user).
    - Worktrees share `<hooksDir>`, so commits by builders in `.factory/worktrees/<slug>` (and merges into
      `main`) refresh the graph too; never install hooks per worktree.
 

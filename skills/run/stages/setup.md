@@ -21,17 +21,11 @@ for the summary.
   .mcp.json) / Stop setup`. Fix: `git -C "<repoPath>" rm -q --cached .mcp.json`.
 - **`<ignore>`** (after writing `.mcp.json` or `.claude/settings.local.json`, and in step 7). Add the lines:
   `f="<repoPath>/.gitignore"; touch "$f"; for e in .factory/ graphify-out/ .mcp.json .claude/settings.local.json; do grep -qxF "$e" "$f" || { [ -n "$(tail -c1 "$f")" ] && echo >> "$f"; echo "$e" >> "$f"; }; done`.
-  Commit check: commit when the repo has a commit, `git -C "<repoPath>" branch --show-current` is the default branch
-  (`main`, else `master`), `git -C "<repoPath>" status --porcelain -- .gitignore` is not empty and only those lines
-  were added (exits 0):
-  `m='^(\.factory/|graphify-out/|\.mcp\.json|\.claude/settings\.local\.json)$'; diff <(git -C "<repoPath>" show HEAD:.gitignore 2>/dev/null | grep -vE "$m") <(grep -vE "$m" "<repoPath>/.gitignore") >/dev/null`.
-  Commit = `git -C "<repoPath>" add .gitignore && git -C "<repoPath>" commit -m "chore: ignore factory working files" -- .gitignore`;
-  if `git -C "<repoPath>" diff --cached --name-only` then lists exactly `.gitignore` and `.mcp.json` (the Tracked
-  rule's removal), drop `-- .gitignore` so the removal is committed too (a pathspec re-adds the file). The questions
-  of steps 2, 3, 4 and 7 cover this commit.
+  Then SOP 4's working-files commit (`.gitignore`, plus `.gitattributes` once step 7's `graphify hook install` has
+  written its line; files with other uncommitted changes are skipped). The questions of steps 2, 3, 4 and 7 cover it.
 - **PATH.** Bash calls do not share environment: once uv or bun is installed in this run, start every later Bash
   call with `export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"; `.
-- **Stop setup** (a `Stop setup` answer, or a re-check that still fails): run `<ignore>`'s commit check (never leave
+- **Stop setup** (a `Stop setup` answer, or a re-check that still fails): run SOP 4's working-files commit (never leave
   `<main>` dirty); print what is missing and the user's next action; `factory-event stage --stage setup --status
   stopped </dev/null`; if `Factory Log` exists and `mcp__trilium__*` tools are available, append
   `- <ISO ts> [setup] stage stopped — <reason>`; end the whole run.
@@ -105,19 +99,22 @@ nothing is read from Trilium before step 9.
    - Checks: dirs `<repoPath>/.factory/{worktrees,mockups,tasks,workstreams}`; `<repoPath>/.gitignore` has the
      `<ignore>` lines (`grep -qxF`); hooks: `<hooksDir>` = output of
      `git -C "<repoPath>" rev-parse --path-format=absolute --git-path hooks` (right for linked worktrees, submodules
-     and `core.hooksPath`), present = `grep -q graphify "<hooksDir>/post-commit"` (not `graphify.gitHooks`); the repo
-     has a commit (`git -C "<repoPath>" rev-parse -q --verify HEAD` succeeds; preflight `git.hasCommits`).
-   - Missing → tell the user the list (dirs; `.gitignore` lines + the `<ignore>` commit if it applies, naming it the
-     repo's first commit when there is none; Graphify git hooks in `<hooksDir>`, which rebuild `graphify-out/` after
-     commits); AskUserQuestion `Apply / Stop setup`.
+     and `core.hooksPath`), present = `grep -q graphify "<hooksDir>/post-commit"` (not `graphify.gitHooks`); merge
+     driver: `grep -q merge=graphify "<repoPath>/.gitattributes" 2>/dev/null`; nothing pending:
+     `git -C "<repoPath>" status --porcelain -- .gitignore .gitattributes` is empty; the repo has a commit
+     (`git -C "<repoPath>" rev-parse -q --verify HEAD` succeeds; preflight `git.hasCommits`).
+   - Missing → tell the user the list (dirs; `.gitignore` lines; Graphify git hooks in `<hooksDir>`, which rebuild
+     `graphify-out/` after commits, and their `.gitattributes` merge-driver line; the working-files commit of
+     `.gitignore`/`.gitattributes` if it applies, naming it the repo's first commit when there is none);
+     AskUserQuestion `Apply / Stop setup`.
    - Dirs: `mkdir -p "<repoPath>/.factory/worktrees" "<repoPath>/.factory/mockups" "<repoPath>/.factory/tasks" "<repoPath>/.factory/workstreams"`.
-   - `.gitignore`: `<ignore>`; its commit is also made when the repo has no commits (`rev-parse -q --verify HEAD`
-     fails), even with no line added (brainstorm cannot branch a worktree from an empty repo): the FIRST commit, on
-     the unborn branch (`branch --show-current`; `main` after step 6), then the default branch `<main>`. Not made →
-     leave `.gitignore` uncommitted; say so in the summary.
-   - Hooks: `cd "<repoPath>" && graphify hook install`; re-check with the same grep. Still absent (e.g. husky owns
-     `core.hooksPath`) → warn once that the graph refreshes only via SOP 5's stale check and continue: hooks never
-     Stop setup.
+   - Hooks first (so the commit below takes `.gitattributes` too): `cd "<repoPath>" && graphify hook install`;
+     re-check with the same grep. Still absent (e.g. husky owns `core.hooksPath`) → warn once that the graph
+     refreshes only via SOP 5's stale check and continue: hooks never Stop setup.
+   - Then `.gitignore`: `<ignore>`; its commit is also made when the repo has no commits (`rev-parse -q --verify
+     HEAD` fails), even with no line added (brainstorm cannot branch a worktree from an empty repo): the FIRST
+     commit, on the unborn branch (`branch --show-current`; `main` after step 6), then the default branch `<main>`.
+     Not made → leave the files uncommitted; say so in the summary.
 8. **MCP gate.** `mcp__trilium__search_notes` must be callable: in your tool list, or loaded with ToolSearch query
    `+trilium` (max_results 20).
    - Callable → step 9.
