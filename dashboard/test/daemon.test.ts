@@ -241,6 +241,38 @@ describe("daemon lifecycle", () => {
     } finally { foreign.kill("SIGKILL"); await foreign.exited; }
   }, 30000);
 
+  test("start replaces a server from before the lifecycle change (health without autoExit); status flags it legacy", async () => {
+    // a stub at a dashboard/src/server.ts path (so it passes as ours) answering the pre-lifecycle health JSON; started
+    // through sh so it is not this process's child: once killed it is reaped, not left a zombie that still looks alive
+    const root = mkdtempSync(join(tmpdir(), "factory-legacy-"));
+    const stubPath = join(root, "dashboard/src/server.ts");
+    mkdirSync(join(root, "dashboard/src"), { recursive: true });
+    writeFileSync(stubPath, `Bun.serve({ hostname: "127.0.0.1", port: ${port}, fetch: () => Response.json({ ok: true, pid: process.pid }) });`);
+    const sh = Bun.spawnSync(["sh", "-c", `"$0" "$1" </dev/null >/dev/null 2>&1 & echo $!`, process.execPath, stubPath], { stdout: "pipe" });
+    const stub = Number(sh.stdout.toString().trim());
+    const health = async () => (await (await fetch(`http://127.0.0.1:${port}/api/health`)).json()) as any;
+    let started: number | undefined;
+    try {
+      for (let i = 0; i < 50 && (await health().catch(() => null))?.pid !== stub; i++) await Bun.sleep(100);
+      expect(run("status").json).toMatchObject({ running: true, port, pid: stub, legacy: true });
+      const s = run("start");
+      started = s.json?.pid;
+      expect(s.code).toBe(0);
+      expect(s.json).toMatchObject({ running: true, port, replaced: stub });
+      expect(s.json.pid).not.toBe(stub);
+      expect(alive(stub)).toBe(false);
+      const h = await health();
+      expect(h.pid).toBe(s.json.pid);
+      expect(typeof h.autoExit).toBe("boolean");
+      expect(readFileSync(join(env.FACTORY_CONFIG_DIR, "dashboard.pid"), "utf8").trim()).toBe(String(s.json.pid));
+      expect(run("status").json.legacy).toBeUndefined();
+    } finally {
+      run("stop");
+      for (const pid of [stub, started]) if (pid && alive(pid)) process.kill(pid, "SIGKILL");
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 30000);
+
   test("stop ends every factory server on the port: the answering one, the pidfile's and any other", async () => {
     // the pre-probe daemon could leave this: a duplicate co-bound to the port and named in the pidfile while the first
     // kept answering; a third, named nowhere, pins that stop keeps probing until no factory server answers

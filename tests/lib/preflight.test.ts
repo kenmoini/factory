@@ -153,6 +153,20 @@ describe("preflight", () => {
     expect(r2.trilium.ok).toBe(false);
   });
 
+  test("dashboard.running only for a lifecycle-aware server: health with an integer pid and a boolean autoExit", async () => {
+    const health = (body: string) => (async (url: string) => {
+      if (url === "http://127.0.0.1:7777/api/health") return new Response(body, { status: 200 });
+      throw new Error("ECONNREFUSED");
+    }) as unknown as typeof fetch;
+    const dashboard = async (body: string) => (await preflight({ cwd: tmp(), env: configDir(), fetchImpl: health(body), exec: gitExec })).dashboard;
+    expect(await dashboard(JSON.stringify({ ok: true, pid: 4242, autoExit: true }))).toEqual({ running: true, port: 7777 });
+    expect(await dashboard(JSON.stringify({ ok: true, pid: 4242, autoExit: false }))).toEqual({ running: true, port: 7777 });
+    // a server from before the lifecycle change: start must run so the daemon replaces it
+    expect(await dashboard(JSON.stringify({ ok: true, pid: 4242 }))).toEqual({ running: false, port: 7777 });
+    expect(await dashboard("<html>another program</html>")).toEqual({ running: false, port: 7777 });
+    expect(await dashboard("null")).toEqual({ running: false, port: 7777 });
+  });
+
   test("HTTP error from ETAPI is reported", async () => {
     const repo = tmp();
     mcpJson(repo);

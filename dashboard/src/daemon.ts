@@ -39,22 +39,28 @@ function readPid(): number | undefined {
 function alive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === "EPERM"; }
 }
-type Probe = { ok: false } | { ok: true; pid: number | null };
+type Probe = { ok: false } | { ok: true; pid: number | null; lifecycle: boolean };
 /**
  * Asks the port's listener for /api/health: `ok` once anything answers HTTP, `pid` the process the answer names (a
- * factory server always names itself), null when it names none.
+ * factory server always names itself), null when it names none. `lifecycle`: the answer carries a boolean `autoExit`,
+ * as every server that tracks sessions and exits on its own does; a factory server without it predates that.
  */
 async function probe(): Promise<Probe> {
   let text: string;
   try {
     text = await (await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(1000) })).text();
   } catch { return { ok: false }; }
-  let pid: unknown;
-  try { pid = JSON.parse(text)?.pid; } catch { /* not JSON: names no process */ }
-  return { ok: true, pid: typeof pid === "number" && Number.isInteger(pid) && pid > 0 ? pid : null };
+  let health: { pid?: unknown; autoExit?: unknown } | undefined;
+  try { health = JSON.parse(text) ?? undefined; } catch { /* not JSON: names no process */ }
+  const pid = health?.pid;
+  return {
+    ok: true,
+    pid: typeof pid === "number" && Number.isInteger(pid) && pid > 0 ? pid : null,
+    lifecycle: typeof health?.autoExit === "boolean",
+  };
 }
 /** The listener is a factory dashboard server, whichever pid the pidfile names. */
-const ours = (p: Probe): p is { ok: true; pid: number } => p.ok && p.pid !== null && isOurServer(p.pid);
+const ours = (p: Probe): p is Extract<Probe, { ok: true }> & { pid: number } => p.ok && p.pid !== null && isOurServer(p.pid);
 /** Points the pidfile at `pid` when it names another process; true when it was rewritten. */
 function claimPid(pid: number): boolean {
   if (readPid() === pid) return false;
@@ -79,7 +85,9 @@ function openUrl(): void {
 async function status(): Promise<void> {
   const found = await probe();
   if (ours(found)) {
-    print({ running: true, port, pid: found.pid, url, ...(claimPid(found.pid) ? { repaired: true } : {}) });
+    // legacy: a server from before the lifecycle change; the next `start` replaces it
+    const legacy = found.lifecycle ? {} : { legacy: true };
+    print({ running: true, port, pid: found.pid, url, ...legacy, ...(claimPid(found.pid) ? { repaired: true } : {}) });
     return;
   }
   if (found.ok) { print({ running: false, port, foreign: true }); return; }
@@ -148,18 +156,26 @@ async function terminate(pid: number): Promise<void> {
 
 async function start(): Promise<number> {
   const found = await probe();
-  if (ours(found)) {
+  let replaced: number | undefined;
+  if (ours(found) && found.lifecycle) {
     await registerCwd();
     print({ running: true, port, pid: found.pid, url, ...(claimPid(found.pid) ? { adopted: true } : {}) });
     if (args.open) openUrl();
     return 0;
   }
-  if (found.ok) {
+  if (ours(found)) {
+    // a server from before the lifecycle change tracks no session and never exits: replace it, and the pidfile's
+    // server when that is another of ours (the pre-probe daemon could co-bind a duplicate and name it)
+    await terminate(found.pid);
+    const named = readPid();
+    if (named !== undefined && named !== found.pid && alive(named) && isOurServer(named)) await terminate(named);
+    rmSync(pidFile, { force: true });
+    replaced = found.pid;
+  } else if (found.ok) {
     print({ running: false, error: `port ${port} is in use by another program` });
     return 1;
   }
   const existing = readPid();
-  let replaced: number | undefined;
   if (existing !== undefined && alive(existing)) {
     if (isOurServer(existing)) {
       // it may still be starting: wait for it to answer before replacing it
@@ -167,6 +183,7 @@ async function start(): Promise<number> {
       while (Date.now() < deadline) {
         const p = await probe();
         if (p.ok && p.pid === existing) {
+          if (!p.lifecycle) break; // a server from before the lifecycle change: replace it
           await registerCwd();
           print({ running: true, port, pid: existing, url });
           if (args.open) openUrl();

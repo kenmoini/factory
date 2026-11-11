@@ -154,10 +154,19 @@ export async function preflight(opts: {
     return out;
   })(); }
 
+  /**
+   * Running only for a dashboard that tracks sessions (its health names its pid and carries a boolean `autoExit`): an
+   * older server or another program on the port reads as not running, so the orchestrator's `factory-dashboard start`
+   * replaces the one and reports the other, as the daemon does.
+   */
   function dashboardProbe() { return (async () => {
     try {
       const res = await get(`http://127.0.0.1:${port}/api/health`);
-      return { running: res.ok, port };
+      if (!res.ok) return { running: false, port };
+      const h = JSON.parse(await withTimeout(res.text(), timeoutMs)) as { pid?: unknown; autoExit?: unknown } | null;
+      const pid = h?.pid;
+      const running = typeof pid === "number" && Number.isInteger(pid) && pid > 0 && typeof h?.autoExit === "boolean";
+      return { running, port };
     } catch {
       return { running: false, port };
     }
